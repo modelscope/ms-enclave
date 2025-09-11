@@ -1,0 +1,46 @@
+[project]
+name = "ms-enclave"
+dynamic = ["version"]
+description = "Modularized and Stable Sandbox runtime environment."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+    { name = "ModelScope team", email = "contact@modelscope.cn" },
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "openai",
+    "pydantic>=2.11.7",
+    "requests>=2.32.4",
+    "shortuuid>=1.0.13",
+    "aiohttp>=3.8.1",
+    "docstring-parser",
+]
+
+[project.urls]
+Homepage = "https://github.com/modelscope/ms-enclave"
+
+[tool.setuptools]
+packages = ["ms_enclave"]
+
+[tool.setuptools.dynamic]
+version = { attr = "ms_enclave.__version__" }
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.23.0",
+    "pre-commit>=4.2.0",
+    "jupyter-book>=1.0.4.post1",
+    "pytest-cov>=6.2.1",
+]
+
+docker = [
+    "docker>=7.1.0",
+]
