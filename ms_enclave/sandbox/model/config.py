@@ -23,10 +23,10 @@ class DockerSandboxConfig(SandboxConfig):
     command: Optional[Union[str, List[str]]] = Field(None, description='Container command')
     volumes: Dict[str, str] = Field(default_factory=dict, description='Volume mounts')
     ports: Dict[str, str] = Field(default_factory=dict, description='Port mappings')
-    network: Optional[str] = Field(None, description='Network name')
+    network: Optional[str] = Field('bridge', description='Network name')
     memory_limit: str = Field(default='1g', description='Memory limit')
     cpu_limit: float = Field(default=1.0, description='CPU limit')
-    network_enabled: bool = Field(default=False, description='Enable network access')
+    network_enabled: bool = Field(default=True, description='Enable network access')
     privileged: bool = Field(default=False, description='Run in privileged mode')
     remove_on_exit: bool = Field(default=True, description='Remove container on exit')
 

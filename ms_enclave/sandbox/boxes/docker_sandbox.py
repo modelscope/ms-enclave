@@ -59,7 +59,7 @@ class DockerSandbox(Sandbox):
         except Exception as e:
             self.update_status(SandboxStatus.ERROR)
             self.metadata['error'] = str(e)
-            raise RuntimeError(f'Failed to start Docker sandbox: {e}')
+            logger.error(f'Failed to start Docker sandbox: {e}')
 
     async def stop(self) -> None:
         """Stop the Docker container."""

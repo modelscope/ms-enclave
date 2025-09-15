@@ -146,6 +146,29 @@ print(c)"""
         print(result.model_dump_json())
         self.assertEqual(result.status, ExecutionStatus.SUCCESS)
 
+    async def test_notebook_executor_state_persistence(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('notebook_executor')
+        )
+        self.assertIn('notebook_executor', self.docker_sandbox.get_available_tools())
+
+        notebook_code = """a = 1
+b = 2
+c = a + b
+print(c)"""
+
+        result = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': notebook_code}
+        )
+        print(result.model_dump_json())
+        
+        result2 = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': 'print(c)'}
+        )
+        print(result2.model_dump_json())
+        self.assertEqual(result.output.strip(),  result2.output.strip())
+        self.assertEqual(result2.status, ExecutionStatus.SUCCESS)
+
 if __name__ == '__main__':
     import asyncio
     unittest.main()
