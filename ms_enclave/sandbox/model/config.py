@@ -49,6 +49,15 @@ class DockerSandboxConfig(SandboxConfig):
         return v
 
 
+class DockerNotebookConfig(DockerSandboxConfig):
+    """Docker Notebook-specific sandbox configuration."""
+
+    image: str = Field('jupyter-kernel-gateway', description='Docker image name for Jupyter Notebook')
+    host: str = Field('127.0.0.1', description='Host for Jupyter Notebook')
+    port: int = Field(8888, description='Port for Jupyter Notebook')
+    token: Optional[str] = Field(None, description='Token for Jupyter Notebook access')
+
+
 class ToolConfig(BaseModel):
     """Tool configuration."""
 

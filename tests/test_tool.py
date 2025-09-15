@@ -118,6 +118,34 @@ class TestExecutorTool(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(verify_delete_result.status, ExecutionStatus.SUCCESS)
         self.assertIn('does not exist', verify_delete_result.output)
 
+class TestNotebookExecutorTool(unittest.IsolatedAsyncioTestCase):
+    """Test notebook executor tool functionality."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.docker_sandbox = SandboxFactory.create_sandbox(SandboxType.DOCKER_NOTEBOOK)
+        asyncio.run(self.docker_sandbox.__aenter__())
+
+    def tearDown(self):
+        asyncio.run(self.docker_sandbox.__aexit__(None, None, None))
+
+    async def test_notebook_executor(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('notebook_executor')
+        )
+        self.assertIn('notebook_executor', self.docker_sandbox.get_available_tools())
+
+        notebook_code = """a = 1
+b = 2
+c = a + b
+print(c)"""
+
+        result = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': notebook_code}
+        )
+        print(result.model_dump_json())
+        self.assertEqual(result.status, ExecutionStatus.SUCCESS)
+
 if __name__ == '__main__':
     import asyncio
     unittest.main()

@@ -10,13 +10,13 @@ from ms_enclave.utils import get_logger
 
 from ..model import (
     CommandResult,
+    DockerNotebookConfig,
     DockerSandboxConfig,
     SandboxConfig,
     SandboxInfo,
     SandboxStatus,
     SandboxType,
     ToolResult,
-    ToolType,
 )
 from ..tools import Tool, ToolFactory
 
@@ -229,11 +229,15 @@ class SandboxFactory:
         if not config:
             if sandbox_type == SandboxType.DOCKER:
                 config = DockerSandboxConfig()
+            elif sandbox_type == SandboxType.DOCKER_NOTEBOOK:
+                config = DockerNotebookConfig()
             else:
                 config = SandboxConfig()
         elif isinstance(config, dict):
             if sandbox_type == SandboxType.DOCKER:
                 config = DockerSandboxConfig(**config)
+            elif sandbox_type == SandboxType.DOCKER_NOTEBOOK:
+                config = DockerNotebookConfig(**config)
             else:
                 config = SandboxConfig(**config)
 

@@ -2,6 +2,7 @@
 
 from .base import ExecutionStatus, SandboxStatus, SandboxType, ToolType
 from .config import (
+    DockerNotebookConfig,
     DockerSandboxConfig,
     FileOperationConfig,
     PythonExecutorConfig,

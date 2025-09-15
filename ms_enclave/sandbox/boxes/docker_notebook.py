@@ -1,19 +1,18 @@
 # flake8: noqa E501
 import asyncio
-import json
-import time
-import uuid
+import tempfile
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from docker import DockerClient
 
-from ..model import CommandResult, DockerSandboxConfig, ExecutionStatus, SandboxType
-from .docker_sandbox import DockerSandbox
-from .base import register_sandbox
-
 from ms_enclave.utils import get_logger
+
+from ..model import DockerNotebookConfig, SandboxStatus, SandboxType
+from .base import register_sandbox
+from .docker_sandbox import DockerSandbox
+
 logger = get_logger()
 
 
@@ -25,10 +24,8 @@ class JupyterDockerSandbox(DockerSandbox):
 
     def __init__(
         self,
-        config: DockerSandboxConfig,
+        config: DockerNotebookConfig,
         sandbox_id: Optional[str] = None,
-        host: str = '127.0.0.1',
-        port: int = 8888,
     ):
         """
         Initialize the Docker-based Jupyter Kernel Gateway executor.
@@ -39,38 +36,50 @@ class JupyterDockerSandbox(DockerSandbox):
             host: Host to bind to.
             port: Port to bind to.
         """
-        # Set up Jupyter-specific image if not provided
-        if not config.image:
-            config.image = 'jupyter-kernel-gateway'
-
-        # Ensure port mapping for Jupyter
-        if not config.ports:
-            config.ports = {}
-        config.ports['8888/tcp'] = (host, port)
-
         super().__init__(config, sandbox_id)
 
-        self.host = host
-        self.port = port
+        self.config: DockerNotebookConfig = config
+        self.host = self.config.host
+        self.port = self.config.port
         self.kernel_id = None
         self.ws = None
         self.base_url = None
-        self.client: DockerClient = None  # type: ignore
+        self.client: Optional[DockerClient] = None
+        self.config.ports['8888/tcp'] = (self.host, self.port)
+
+    @property
+    def sandbox_type(self) -> SandboxType:
+        """Return sandbox type."""
+        return SandboxType.DOCKER_NOTEBOOK
 
     async def start(self) -> None:
         """Start the Docker container with Jupyter Kernel Gateway."""
-        # First start the base container
-        await super().start()
-
-        # Setup Jupyter kernel gateway
-        await self._setup_jupyter()
-
-    async def _setup_jupyter(self) -> None:
-        """Setup Jupyter Kernel Gateway in the container."""
         try:
-            # Build Jupyter image if needed
+            self.update_status(SandboxStatus.INITIALIZING)
+
+            # Initialize Docker client first
+            import docker
+            self.client = docker.from_env()
+
+            # Build Jupyter image if needed before creating container
             await self._build_jupyter_image()
 
+            # Now start the base container with the Jupyter image
+            await super().start()
+
+            # Setup Jupyter kernel gateway services
+            await self._setup_jupyter()
+
+            self.update_status(SandboxStatus.RUNNING)
+
+        except Exception as e:
+            self.update_status(SandboxStatus.ERROR)
+            self.metadata['error'] = str(e)
+            raise RuntimeError(f'Failed to start Jupyter Docker sandbox: {e}')
+
+    async def _setup_jupyter(self) -> None:
+        """Setup Jupyter Kernel Gateway services in the container."""
+        try:
             # Start Jupyter Kernel Gateway
             await self._start_jupyter_service()
 
@@ -98,30 +107,31 @@ class JupyterDockerSandbox(DockerSandbox):
                 RUN pip install jupyter_kernel_gateway jupyter_client requests websocket-client
 
                 EXPOSE 8888
-                CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin='*'"]
+                CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip=0.0.0.0", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin=*"]
                 """
             )
 
-            dockerfile_path = Path('/tmp/jupyter_dockerfile')
-            dockerfile_path.write_text(dockerfile_content)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                dockerfile_path = Path(tmpdir) / 'Dockerfile'
+                dockerfile_path.write_text(dockerfile_content)
 
-            # Build image
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.client.images.
-                build(path=str(dockerfile_path.parent), dockerfile='jupyter_dockerfile', tag=self.config.image)
-            )
+                # Build image with output
+                def build_image():
+                    build_logs = self.client.images.build(
+                        path=tmpdir, dockerfile='Dockerfile', tag=self.config.image, rm=True
+                    )
+                    # Process and log build output
+                    for log in build_logs[1]:  # build_logs[1] contains the build log generator
+                        if 'stream' in log:
+                            logger.info(f"Docker build: {log['stream'].strip()}")
+                        elif 'error' in log:
+                            logger.error(f"Docker build error: {log['error']}")
+                    return build_logs[0]  # Return the built image
+
+                await asyncio.get_event_loop().run_in_executor(None, build_image)
 
     async def _start_jupyter_service(self) -> None:
         """Start Jupyter Kernel Gateway service in container."""
-        # Start Jupyter service
-        start_cmd = 'jupyter kernelgateway --KernelGatewayApp.ip="0.0.0.0" --KernelGatewayApp.port=8888 --KernelGatewayApp.allow_origin="*" &'  # noqa: E501
-        result = await self.execute_command(start_cmd)
-
-        if not result or result.exit_code != 0:
-            raise RuntimeError(
-                f'Failed to start Jupyter Kernel Gateway: {result.stderr if result else "Unknown error"}'
-            )
-
         # Wait for service to be ready
         self.base_url = f'http://{self.host}:{self.port}'
 
@@ -158,95 +168,6 @@ class JupyterDockerSandbox(DockerSandbox):
             logger.info(f'Kernel {self.kernel_id} created and connected')
         except ImportError:
             raise RuntimeError('websocket-client package is required. Install with: pip install websocket-client')
-
-    async def execute_python_code(self, code: str, timeout: Optional[int] = None) -> CommandResult:
-        """Execute Python code in the Jupyter kernel."""
-        if not self.ws or not self.kernel_id:
-            raise RuntimeError('Jupyter kernel is not ready')
-
-        try:
-            # Send execute request
-            msg_id = self._send_execute_request(code)
-
-            # Collect output and results
-            outputs = []
-            result = None
-            error_occurred = False
-
-            actual_timeout = timeout or 30
-            start_time = time.time()
-
-            while time.time() - start_time < actual_timeout:
-                try:
-                    msg = json.loads(self.ws.recv())
-                    parent_msg_id = msg.get('parent_header', {}).get('msg_id')
-
-                    # Skip unrelated messages
-                    if parent_msg_id != msg_id:
-                        continue
-
-                    msg_type = msg.get('msg_type', '')
-                    msg_content = msg.get('content', {})
-
-                    if msg_type == 'stream':
-                        outputs.append(msg_content['text'])
-                    elif msg_type == 'execute_result':
-                        result = msg_content['data'].get('text/plain', '')
-                    elif msg_type == 'error':
-                        error_occurred = True
-                        error_msg = '\n'.join(msg_content.get('traceback', []))
-                        outputs.append(error_msg)
-                    elif msg_type == 'status' and msg_content['execution_state'] == 'idle':
-                        break
-
-                except Exception as e:
-                    logger.error(f'Error receiving message: {e}')
-                    break
-
-            output_text = ''.join(outputs)
-            if result:
-                output_text += f'\nResult: {result}'
-
-            return CommandResult(
-                command=code,
-                status=ExecutionStatus.ERROR if error_occurred else ExecutionStatus.SUCCESS,
-                exit_code=1 if error_occurred else 0,
-                stdout=output_text,
-                stderr='' if not error_occurred else output_text
-            )
-
-        except Exception as e:
-            return CommandResult(
-                command=code, status=ExecutionStatus.ERROR, exit_code=1, stdout='', stderr=f'Execution failed: {e}'
-            )
-
-    def _send_execute_request(self, code: str) -> str:
-        """Send code execution request to kernel."""
-        # Generate a unique message ID
-        msg_id = str(uuid.uuid4())
-
-        # Create execute request
-        execute_request = {
-            'header': {
-                'msg_id': msg_id,
-                'username': 'anonymous',
-                'session': str(uuid.uuid4()),
-                'msg_type': 'execute_request',
-                'version': '5.0',
-            },
-            'parent_header': {},
-            'metadata': {},
-            'content': {
-                'code': code,
-                'silent': False,
-                'store_history': True,
-                'user_expressions': {},
-                'allow_stdin': False,
-            },
-        }
-
-        self.ws.send(json.dumps(execute_request))
-        return msg_id
 
     async def cleanup(self) -> None:
         """Clean up Jupyter resources and Docker container."""
