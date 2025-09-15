@@ -161,7 +161,7 @@ print(c)"""
             'notebook_executor', {'code': notebook_code}
         )
         print(result.model_dump_json())
-        
+
         result2 = await self.docker_sandbox.execute_tool(
             'notebook_executor', {'code': 'print(c)'}
         )

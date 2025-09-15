@@ -84,7 +84,7 @@ class JupyterDockerSandbox(DockerSandbox):
         try:
             # Wait for Jupyter Kernel Gateway to be ready
             await self._wait_for_jupyter_ready()
-            
+
             # Create kernel and establish websocket connection
             await self._create_kernel()
 
@@ -94,13 +94,14 @@ class JupyterDockerSandbox(DockerSandbox):
 
     async def _wait_for_jupyter_ready(self) -> None:
         """Wait for Jupyter Kernel Gateway to be ready."""
-        import requests
         import time
-        
-        self.base_url = f"http://{self.host}:{self.port}"
+
+        import requests
+
+        self.base_url = f'http://{self.host}:{self.port}'
         max_retries = 5  # Wait up to 30 seconds
         retry_interval = 1  # Check every second
-        
+
         for attempt in range(max_retries):
             try:
                 # Try to get the API status
@@ -111,11 +112,11 @@ class JupyterDockerSandbox(DockerSandbox):
             except requests.exceptions.RequestException:
                 # Connection failed, Jupyter not ready yet
                 pass
-            
+
             if attempt < max_retries - 1:
                 logger.info(f'Waiting for Jupyter Kernel Gateway to be ready... (attempt {attempt + 1}/{max_retries})')
                 await asyncio.sleep(retry_interval)
-        
+
         raise RuntimeError(f'Jupyter Kernel Gateway failed to become ready within {max_retries} seconds')
 
     async def _build_jupyter_image(self) -> None:
@@ -169,14 +170,14 @@ class JupyterDockerSandbox(DockerSandbox):
         response = requests.post(f'{self.base_url}/api/kernels')
         if response.status_code != 201:
             error_details = {
-                    "status_code": response.status_code,
-                    "headers": dict(response.headers),
-                    "url": response.url,
-                    "body": response.text,
-                    "request_method": response.request.method,
-                    "request_headers": dict(response.request.headers),
-                    "request_body": response.request.body,
-                }
+                'status_code': response.status_code,
+                'headers': dict(response.headers),
+                'url': response.url,
+                'body': response.text,
+                'request_method': response.request.method,
+                'request_headers': dict(response.request.headers),
+                'request_body': response.request.body,
+            }
             raise RuntimeError(f'Failed to create kernel: {json.dumps(error_details, indent=2)}')
 
         self.kernel_id = response.json()['id']

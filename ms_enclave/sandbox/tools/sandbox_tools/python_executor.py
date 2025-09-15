@@ -38,8 +38,8 @@ class PythonExecutor(SandboxTool):
         """Execute Python code using IPython in the Docker container."""
 
         import uuid
-        script_basename = f"exec_script_{uuid.uuid4().hex}.py"
-        script_path = f"/tmp/{script_basename}"
+        script_basename = f'exec_script_{uuid.uuid4().hex}.py'
+        script_path = f'/tmp/{script_basename}'
 
         if not code.strip():
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No code provided')
