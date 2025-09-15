@@ -100,16 +100,17 @@ class Sandbox(abc.ABC):
             tool: Tool instance to add
         """
         if tool.name in self._tools:
-            raise ValueError(f'Tool {tool.name} is already added to the sandbox')
+            logger.warning(f'Tool {tool.name} is already added to the sandbox')
+            return
         if tool.enabled:
             if (tool.required_sandbox_type is None or tool.required_sandbox_type == self.sandbox_type):
                 self._tools[tool.name] = tool
             else:
-                raise ValueError(
+                logger.warning(
                     f'Tool {tool.name} requires {tool.required_sandbox_type} but sandbox is {self.sandbox_type}'
                 )
         else:
-            raise ValueError(f'Tool {tool.name} is not enabled and cannot be added')
+            logger.warning(f'Tool {tool.name} is not enabled and cannot be added')
 
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> ToolResult:
         """Execute a tool with given parameters.

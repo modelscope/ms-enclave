@@ -43,4 +43,5 @@ dev = [
 
 docker = [
     "docker>=7.1.0",
+    "websocket-client"
 ]

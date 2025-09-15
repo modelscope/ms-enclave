@@ -37,6 +37,10 @@ class PythonExecutor(SandboxTool):
     async def execute(self, sandbox_context: 'Sandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
         """Execute Python code using IPython in the Docker container."""
 
+        import uuid
+        script_basename = f"exec_script_{uuid.uuid4().hex}.py"
+        script_path = f"/tmp/{script_basename}"
+
         if not code.strip():
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No code provided')
 
@@ -45,7 +49,6 @@ class PythonExecutor(SandboxTool):
             script_content = self._create_execution_script(code)
 
             # Write script to container
-            script_path = '/tmp/exec_script.py'
             await self._write_file_to_container(sandbox_context, script_path, script_content)
 
             # Execute using IPython
@@ -53,24 +56,26 @@ class PythonExecutor(SandboxTool):
             result = await sandbox_context.execute_command(command, timeout=timeout)
 
             if result.exit_code == 0:
-                return ToolResult(
-                    tool_name=self.name,
-                    status=ExecutionStatus.SUCCESS,
-                    output=result.stdout,
-                    error=result.stderr if result.stderr else None
-                )
+                status = ExecutionStatus.SUCCESS
             else:
-                return ToolResult(
-                    tool_name=self.name,
-                    status=ExecutionStatus.ERROR,
-                    output=result.stdout,
-                    error=result.stderr if result.stderr else None
-                )
+                status = ExecutionStatus.ERROR
 
+            return ToolResult(
+                tool_name=self.name,
+                status=status,
+                output=result.stdout,
+                error=result.stderr if result.stderr else None
+            )
         except Exception as e:
             return ToolResult(
                 tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Execution failed: {str(e)}'
             )
+        finally:
+            # Clean up the script file in the container
+            try:
+                await sandbox_context.execute_command(f'rm -f {script_path}', timeout=5)
+            except Exception:
+                pass
 
     def _create_execution_script(self, code: str) -> str:
         """Create a Python script that captures output and errors."""
@@ -119,16 +124,13 @@ print(json.dumps(_execution_result, ensure_ascii=False, indent=2))
         import io
         import tarfile
 
-        # Create a tar archive in memory
+        # Create a tar archive in memory using context managers
         tar_stream = io.BytesIO()
-        tar = tarfile.TarFile(fileobj=tar_stream, mode='w')
-
-        # Add file to tar
-        file_data = content.encode('utf-8')
-        tarinfo = tarfile.TarInfo(name=os.path.basename(file_path))
-        tarinfo.size = len(file_data)
-        tar.addfile(tarinfo, io.BytesIO(file_data))
-        tar.close()
+        with tarfile.TarFile(fileobj=tar_stream, mode='w') as tar:
+            file_data = content.encode('utf-8')
+            tarinfo = tarfile.TarInfo(name=os.path.basename(file_path))
+            tarinfo.size = len(file_data)
+            tar.addfile(tarinfo, io.BytesIO(file_data))
 
         # Write to container
         tar_stream.seek(0)

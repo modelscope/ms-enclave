@@ -7,14 +7,17 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any, Dict, Optional
 
-from ms_enclave.utils import get_logger
+from docker import DockerClient
 
-from ..model import CommandResult, DockerSandboxConfig, ExecutionStatus
+from ..model import CommandResult, DockerSandboxConfig, ExecutionStatus, SandboxType
 from .docker_sandbox import DockerSandbox
+from .base import register_sandbox
 
+from ms_enclave.utils import get_logger
 logger = get_logger()
 
 
+@register_sandbox(SandboxType.DOCKER_NOTEBOOK)
 class JupyterDockerSandbox(DockerSandbox):
     """
     Docker sandbox that executes Python code using Jupyter Kernel Gateway.
@@ -52,6 +55,7 @@ class JupyterDockerSandbox(DockerSandbox):
         self.kernel_id = None
         self.ws = None
         self.base_url = None
+        self.client: DockerClient = None  # type: ignore
 
     async def start(self) -> None:
         """Start the Docker container with Jupyter Kernel Gateway."""

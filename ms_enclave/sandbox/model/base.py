@@ -17,6 +17,7 @@ class SandboxStatus(str, Enum):
 class SandboxType(str, Enum):
     """Sandbox type enumeration."""
     DOCKER = 'docker'
+    DOCKER_NOTEBOOK = 'docker_notebook'
     DUMMY = 'dummy'
 
 

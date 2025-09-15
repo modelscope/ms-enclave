@@ -36,6 +36,40 @@ class DockerSandbox(Sandbox):
         """Return sandbox type."""
         return SandboxType.DOCKER
 
+    async def start(self) -> None:
+        """Start the Docker container."""
+        try:
+            self.update_status(SandboxStatus.INITIALIZING)
+
+            # Initialize Docker client
+            self.client = docker.from_env()
+
+            # Ensure image exists
+            await self._ensure_image_exists()
+
+            # Create and start container
+            await self._create_container()
+            await self._start_container()
+
+            # Initialize tools
+            await self.initialize_tools()
+
+            self.update_status(SandboxStatus.RUNNING)
+
+        except Exception as e:
+            self.update_status(SandboxStatus.ERROR)
+            self.metadata['error'] = str(e)
+            raise RuntimeError(f'Failed to start Docker sandbox: {e}')
+
+    async def stop(self) -> None:
+        """Stop the Docker container."""
+        try:
+            if self.container:
+                self.update_status(SandboxStatus.STOPPED)
+                self.container.stop(timeout=10)
+        except Exception as e:
+            logger.error(f'Error stopping container: {e}')
+
     async def get_execution_context(self) -> Any:
         """Return the container for tool execution."""
         return self.container
@@ -77,40 +111,6 @@ class DockerSandbox(Sandbox):
             )
         except Exception as e:
             return CommandResult(command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e))
-
-    async def start(self) -> None:
-        """Start the Docker container."""
-        try:
-            self.update_status(SandboxStatus.INITIALIZING)
-
-            # Initialize Docker client
-            self.client = docker.from_env()
-
-            # Ensure image exists
-            await self._ensure_image_exists()
-
-            # Create and start container
-            await self._create_container()
-            await self._start_container()
-
-            # Initialize tools
-            await self.initialize_tools()
-
-            self.update_status(SandboxStatus.RUNNING)
-
-        except Exception as e:
-            self.update_status(SandboxStatus.ERROR)
-            self.metadata['error'] = str(e)
-            raise RuntimeError(f'Failed to start Docker sandbox: {e}')
-
-    async def stop(self) -> None:
-        """Stop the Docker container."""
-        try:
-            if self.container:
-                self.update_status(SandboxStatus.STOPPED)
-                self.container.stop(timeout=10)
-        except Exception as e:
-            logger.error(f'Error stopping container: {e}')
 
     async def cleanup(self) -> None:
         """Clean up Docker resources."""
