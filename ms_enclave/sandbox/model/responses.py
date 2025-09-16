@@ -41,7 +41,7 @@ class ToolResult(ExecutionResult):
 class CommandResult(ExecutionResult):
     """Command execution result."""
 
-    command: str = Field(..., description='Executed command')
+    command: Union[str, List[str]] = Field(..., description='Executed command')
     exit_code: int = Field(..., description='Exit code of the command')
     stdout: Optional[str] = Field(None, description='Standard output')
     stderr: Optional[str] = Field(None, description='Standard error output')

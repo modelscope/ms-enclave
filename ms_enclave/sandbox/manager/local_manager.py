@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ms_enclave.utils import get_logger
 
@@ -60,7 +60,7 @@ class LocalSandboxManager(SandboxManager):
     async def create_sandbox(
         self,
         sandbox_type: SandboxType,
-        config: Optional[SandboxConfig] = None,
+        config: Optional[Union[SandboxConfig, Dict]] = None,
         sandbox_id: Optional[str] = None
     ) -> str:
         """Create a new sandbox.
@@ -281,8 +281,8 @@ class LocalSandboxManager(SandboxManager):
                 # Clean up after 1 hour
                 if current_time - sandbox.updated_at > timedelta(hours=1):
                     expired_sandboxes.append(sandbox_id)
-            # Check for very old sandboxes (24 hours)
-            elif current_time - sandbox.created_at > timedelta(hours=24):
+            # Check for very old sandboxes (48 hours)
+            elif current_time - sandbox.created_at > timedelta(hours=48):
                 expired_sandboxes.append(sandbox_id)
 
         # Clean up expired sandboxes

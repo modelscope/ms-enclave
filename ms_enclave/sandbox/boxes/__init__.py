@@ -1,7 +1,7 @@
 """Sandbox implementations."""
 
 from .base import Sandbox, SandboxFactory, register_sandbox
-from .docker_notebook import JupyterDockerSandbox
+from .docker_notebook import DockerNotebookSandbox
 from .docker_sandbox import DockerSandbox
 
 __all__ = [
@@ -12,5 +12,5 @@ __all__ = [
 
     # Implementations
     'DockerSandbox',
-    'JupyterDockerSandbox',
+    'DockerNotebookSandbox',
 ]

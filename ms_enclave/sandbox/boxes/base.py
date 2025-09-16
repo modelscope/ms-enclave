@@ -136,7 +136,7 @@ class Sandbox(abc.ABC):
         result = await tool.execute(sandbox_context=self, **parameters)
         return result
 
-    async def execute_command(self, command: str, timeout: Optional[int] = None) -> CommandResult:
+    async def execute_command(self, command: Union[str, List[str]], timeout: Optional[int] = None) -> CommandResult:
         """Execute a command in the sandbox environment.
 
         Args:

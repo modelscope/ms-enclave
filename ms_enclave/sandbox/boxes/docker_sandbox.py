@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import docker
 from docker.errors import APIError, ContainerError, ImageNotFound, NotFound
@@ -103,7 +103,7 @@ class DockerSandbox(Sandbox):
         """Return the container for tool execution."""
         return self.container
 
-    async def execute_command(self, command: str, timeout: Optional[int] = None) -> CommandResult:
+    async def execute_command(self, command: Union[str, List[str]], timeout: Optional[int] = None) -> CommandResult:
         """Execute a command in the container."""
         if not self.container:
             raise RuntimeError('Container is not running')

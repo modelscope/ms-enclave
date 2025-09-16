@@ -1,6 +1,6 @@
 """HTTP-based sandbox manager for remote sandbox services."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 
@@ -52,7 +52,7 @@ class HttpSandboxManager(SandboxManager):
     async def create_sandbox(
         self,
         sandbox_type: SandboxType,
-        config: Optional[SandboxConfig] = None,
+        config: Optional[Union[SandboxConfig, Dict]] = None,
         sandbox_id: Optional[str] = None
     ) -> str:
         """Create a new sandbox via HTTP API.
@@ -74,7 +74,12 @@ class HttpSandboxManager(SandboxManager):
 
         # Match server's endpoint format: POST /sandbox/create
         params = {'sandbox_type': sandbox_type.value}
-        payload = config.model_dump() if config else {}
+        if isinstance(config, SandboxConfig):
+            payload = config.model_dump(exclude_none=True)
+        elif isinstance(config, dict):
+            payload = config
+        else:
+            payload = {}
 
         try:
             async with self._session.post(f'{self.base_url}/sandbox/create', params=params, json=payload) as response:

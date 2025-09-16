@@ -18,7 +18,7 @@ logger = get_logger()
 
 
 @register_sandbox(SandboxType.DOCKER_NOTEBOOK)
-class JupyterDockerSandbox(DockerSandbox):
+class DockerNotebookSandbox(DockerSandbox):
     """
     Docker sandbox that executes Python code using Jupyter Kernel Gateway.
     """

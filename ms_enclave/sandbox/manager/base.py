@@ -1,7 +1,7 @@
 """Base sandbox manager interface."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ..model import SandboxConfig, SandboxInfo, SandboxStatus, SandboxType, ToolResult
 
@@ -23,7 +23,7 @@ class SandboxManager(ABC):
     async def create_sandbox(
         self,
         sandbox_type: SandboxType,
-        config: Optional[SandboxConfig] = None,
+        config: Optional[Union[SandboxConfig, Dict]] = None,
         sandbox_id: Optional[str] = None
     ) -> str:
         """Create a new sandbox.
