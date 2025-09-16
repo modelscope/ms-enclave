@@ -48,7 +48,7 @@ class Tool(ABC):
             'function': {
                 'name': self.name,
                 'description': self._description,
-                'parameters': self._parameters.model_dump() if self._parameters else {},
+                'parameters': self._parameters.model_dump(exclude_none=True) if self._parameters else {},
             },
         }
 

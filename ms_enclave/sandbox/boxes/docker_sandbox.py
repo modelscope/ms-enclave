@@ -65,10 +65,39 @@ class DockerSandbox(Sandbox):
         """Stop the Docker container."""
         try:
             if self.container:
-                self.update_status(SandboxStatus.STOPPED)
+                self.update_status(SandboxStatus.STOPPING)
                 self.container.stop(timeout=10)
+                self.update_status(SandboxStatus.STOPPED)
         except Exception as e:
             logger.error(f'Error stopping container: {e}')
+            self.update_status(SandboxStatus.ERROR)
+
+    async def cleanup(self) -> None:
+        """Clean up Docker resources."""
+        try:
+
+            if self.container:
+                try:
+                    # Remove container if configured to do so
+                    if self.config.remove_on_exit:
+                        self.container.remove(force=True)
+                    else:
+                        self.container.stop(timeout=5)
+                except Exception as e:
+                    logger.error(f'Error cleaning up container: {e}')
+                finally:
+                    self.container = None
+
+            if self.client:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+                finally:
+                    self.client = None
+
+        except Exception as e:
+            logger.error(f'Error during cleanup: {e}')
 
     async def get_execution_context(self) -> Any:
         """Return the container for tool execution."""
@@ -111,34 +140,6 @@ class DockerSandbox(Sandbox):
             )
         except Exception as e:
             return CommandResult(command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e))
-
-    async def cleanup(self) -> None:
-        """Clean up Docker resources."""
-        try:
-            self.update_status(SandboxStatus.CLEANUP)
-
-            if self.container:
-                try:
-                    # Remove container if configured to do so
-                    if self.config.remove_on_exit:
-                        self.container.remove(force=True)
-                    else:
-                        self.container.stop(timeout=5)
-                except Exception as e:
-                    logger.error(f'Error cleaning up container: {e}')
-                finally:
-                    self.container = None
-
-            if self.client:
-                try:
-                    self.client.close()
-                except Exception:
-                    pass
-                finally:
-                    self.client = None
-
-        except Exception as e:
-            logger.error(f'Error during cleanup: {e}')
 
     async def _ensure_image_exists(self) -> None:
         """Ensure Docker image exists."""

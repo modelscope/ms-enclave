@@ -11,7 +11,6 @@ class SandboxStatus(str, Enum):
     STOPPING = 'stopping'
     STOPPED = 'stopped'
     ERROR = 'error'
-    CLEANUP = 'cleanup'
 
 
 class SandboxType(str, Enum):

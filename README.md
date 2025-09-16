@@ -229,56 +229,16 @@ async def error_handling_example():
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/ms-enclave.git
+git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -e ".[dev]"
-
-# Run tests
-pytest
 
 # Run examples
 python examples/usage_examples.py
 python examples/server_example.py
 ```
-
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=ms_enclave
-
-# Run specific test file
-pytest tests/test_sandbox.py
-```
-
-## Tools
-
-### Python Executor
-
-Execute Python code with persistent state across multiple calls.
-
-```python
-result = await sandbox.execute_tool('python_executor', {
-    'code': 'x = 42\nprint(f"Value: {x}")',
-    'timeout': 30
-})
-```
-
-### Available Tools
-
-- `python_executor`: Execute Python code
-- `bash`: Execute bash commands
-- Custom tools can be added via the tool factory system
 
 ## Contributing
 

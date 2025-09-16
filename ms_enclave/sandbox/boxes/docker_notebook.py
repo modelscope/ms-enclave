@@ -94,13 +94,11 @@ class JupyterDockerSandbox(DockerSandbox):
 
     async def _wait_for_jupyter_ready(self) -> None:
         """Wait for Jupyter Kernel Gateway to be ready."""
-        import time
-
         import requests
 
         self.base_url = f'http://{self.host}:{self.port}'
-        max_retries = 5  # Wait up to 30 seconds
-        retry_interval = 1  # Check every second
+        max_retries = 10  # Wait up to 30 seconds
+        retry_interval = 3  # Check every 3 second
 
         for attempt in range(max_retries):
             try:
