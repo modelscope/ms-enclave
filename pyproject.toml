@@ -23,10 +23,10 @@ dependencies = [
 Homepage = "https://github.com/modelscope/ms-enclave"
 
 [tool.setuptools]
-packages = ["ms_enclave"]
+packages = { find = { where = ["."] , exclude = ["tests*", "examples*"]} }
 
 [tool.setuptools.dynamic]
-version = { attr = "ms_enclave.__version__" }
+version = { attr = "ms_enclave.version.__version__" }
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]
