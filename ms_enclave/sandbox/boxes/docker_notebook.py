@@ -45,7 +45,6 @@ class DockerNotebookSandbox(DockerSandbox):
         self.kernel_id = None
         self.ws = None
         self.base_url = None
-        self.client: Optional[DockerClient] = None
         self.config.ports['8888/tcp'] = (self.host, self.port)
         self.config.network_enabled = True  # Ensure network is enabled for Jupyter
 
@@ -78,6 +77,7 @@ class DockerNotebookSandbox(DockerSandbox):
             self.update_status(SandboxStatus.ERROR)
             self.metadata['error'] = str(e)
             logger.error(f'Failed to start Jupyter Docker sandbox: {e}')
+            raise RuntimeError(f'Failed to start Jupyter Docker sandbox: {e}')
 
     async def _setup_jupyter(self) -> None:
         """Setup Jupyter Kernel Gateway services in the container."""

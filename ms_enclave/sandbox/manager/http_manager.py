@@ -15,26 +15,25 @@ logger = get_logger()
 class HttpSandboxManager(SandboxManager):
     """HTTP-based sandbox manager for remote services."""
 
-    def __init__(self, base_url: str, timeout: int = 30, max_connections: int = 100):
+    def __init__(self, base_url: str, timeout: int = 30):
         """Initialize HTTP sandbox manager.
 
         Args:
             base_url: Base URL of the sandbox service
             timeout: Request timeout in seconds
-            max_connections: Maximum concurrent connections
         """
+        super().__init__()
         self.base_url = base_url.rstrip('/')
         self.timeout = aiohttp.ClientTimeout(total=timeout)
-        self.connector = aiohttp.TCPConnector(limit=max_connections)
         self._session: Optional[aiohttp.ClientSession] = None
-        self._running = False
 
     async def start(self) -> None:
         """Start the HTTP sandbox manager."""
         if self._running:
             return
 
-        self._session = aiohttp.ClientSession(connector=self.connector, timeout=self.timeout)
+        self._connector = aiohttp.TCPConnector()
+        self._session = aiohttp.ClientSession(connector=self._connector, timeout=self.timeout)
         self._running = True
         logger.info(f'HTTP sandbox manager started, connected to {self.base_url}')
 
@@ -44,6 +43,12 @@ class HttpSandboxManager(SandboxManager):
             return
 
         self._running = False
+
+        # Clean up all sandboxes created by this manager
+        if self._sandboxes:
+            logger.info(f'Cleaning up {len(self._sandboxes)} sandboxes created by this manager')
+            await self.cleanup_all_sandboxes()
+
         if self._session:
             await self._session.close()
             self._session = None
@@ -73,7 +78,7 @@ class HttpSandboxManager(SandboxManager):
             raise RuntimeError('Manager not started')
 
         # Match server's endpoint format: POST /sandbox/create
-        params = {'sandbox_type': sandbox_type.value}
+        params = {'sandbox_type': sandbox_type.value if isinstance(sandbox_type, SandboxType) else sandbox_type}
         if isinstance(config, SandboxConfig):
             payload = config.model_dump(exclude_none=True)
         elif isinstance(config, dict):
@@ -86,6 +91,12 @@ class HttpSandboxManager(SandboxManager):
                 if response.status == 200:
                     data = await response.json()
                     sandbox_id = data['sandbox_id']
+
+                    # Get sandbox info and store in _sandboxes
+                    sandbox_info = await self.get_sandbox_info(sandbox_id)
+                    if sandbox_info:
+                        self._sandboxes[sandbox_id] = sandbox_info
+
                     logger.info(f'Created sandbox {sandbox_id} via HTTP API')
                     return sandbox_id
                 else:
@@ -202,9 +213,13 @@ class HttpSandboxManager(SandboxManager):
             # Match server's endpoint format: DELETE /sandbox/{sandbox_id}
             async with self._session.delete(f'{self.base_url}/sandbox/{sandbox_id}') as response:
                 if response.status == 200:
+                    # Remove from tracking when successfully deleted
+                    self._sandboxes.pop(sandbox_id, None)
                     logger.info(f'Deleted sandbox {sandbox_id} via HTTP API')
                     return True
                 elif response.status == 404:
+                    # Also remove from tracking if not found (already deleted)
+                    self._sandboxes.pop(sandbox_id, None)
                     logger.warning(f'Sandbox {sandbox_id} not found for deletion')
                     return False
                 else:
@@ -290,27 +305,23 @@ class HttpSandboxManager(SandboxManager):
             raise RuntimeError(f'Failed to get sandbox tools: {e}')
 
     async def cleanup_all_sandboxes(self) -> None:
-        """Clean up all sandboxes via HTTP API.
-
-        Note: Server doesn't have bulk delete endpoint,
-        so we list and delete individually.
-        """
+        """Clean up all sandboxes created by this manager via HTTP API."""
         if not self._session:
             raise RuntimeError('Manager not started')
 
         try:
-            # Get all sandboxes and delete them one by one
-            sandboxes = await self.list_sandboxes()
+            # Clean up only the sandboxes created by this manager
+            sandbox_ids = list(self._sandboxes.keys())
             deleted_count = 0
 
-            for sandbox in sandboxes:
+            for sandbox_id in sandbox_ids:
                 try:
-                    if await self.delete_sandbox(sandbox.id):
+                    if await self.delete_sandbox(sandbox_id):
                         deleted_count += 1
                 except Exception as e:
-                    logger.error(f'Error deleting sandbox {sandbox.id}: {e}')
+                    logger.error(f'Error deleting sandbox {sandbox_id}: {e}')
 
-            logger.info(f'Cleaned up {deleted_count} sandboxes via HTTP API')
+            logger.info(f'Cleaned up {deleted_count} sandboxes created by this manager')
 
         except Exception as e:
             logger.error(f'HTTP client error cleaning up sandboxes: {e}')
@@ -325,18 +336,45 @@ class HttpSandboxManager(SandboxManager):
             raise RuntimeError('Manager not started')
 
         try:
-            # Match server's endpoint format: GET /stats
+            # Get server stats
             async with self._session.get(f'{self.base_url}/stats') as response:
                 if response.status == 200:
-                    return await response.json()
+                    server_stats = await response.json()
                 else:
                     error_data = await response.json()
                     logger.error(f'Error getting server stats: HTTP {response.status}: {error_data}')
-                    return {}
+                    server_stats = {}
+
+            # Add local tracking stats
+            from collections import Counter
+            status_counter = Counter()
+            type_counter = Counter()
+
+            for sandbox_info in self._sandboxes.values():
+                status_counter[sandbox_info.status.value] += 1
+                type_counter[sandbox_info.sandbox_type.value] += 1
+
+            local_stats = {
+                'manager_type': 'http',
+                'base_url': self.base_url,
+                'tracked_sandboxes': len(self._sandboxes),
+                'tracked_status_counts': dict(status_counter),
+                'tracked_sandbox_types': dict(type_counter),
+                'running': self._running,
+            }
+
+            # Combine server and local stats
+            return {**server_stats, **local_stats}
 
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error getting server stats: {e}')
-            return {}
+            return {
+                'manager_type': 'http',
+                'base_url': self.base_url,
+                'tracked_sandboxes': len(self._sandboxes),
+                'running': self._running,
+                'error': str(e)
+            }
 
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check via HTTP API.

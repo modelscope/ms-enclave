@@ -5,7 +5,9 @@ import time
 from typing import Any, Dict, List, Optional, Union
 
 import docker
+from docker import DockerClient
 from docker.errors import APIError, ContainerError, ImageNotFound, NotFound
+from docker.models.containers import Container
 
 from ms_enclave.utils import get_logger
 
@@ -28,8 +30,8 @@ class DockerSandbox(Sandbox):
         """
         super().__init__(config, sandbox_id)
         self.config: DockerSandboxConfig = config
-        self.client: Optional[docker.DockerClient] = None
-        self.container: Optional[docker.models.containers.Container] = None
+        self.client: Optional[DockerClient] = None
+        self.container: Optional[Container] = None
 
     @property
     def sandbox_type(self) -> SandboxType:
@@ -60,39 +62,48 @@ class DockerSandbox(Sandbox):
             self.update_status(SandboxStatus.ERROR)
             self.metadata['error'] = str(e)
             logger.error(f'Failed to start Docker sandbox: {e}')
+            raise RuntimeError(f'Failed to start Docker sandbox: {e}')
 
     async def stop(self) -> None:
-        """Stop the Docker container."""
+        """Stop the Docker container and clean up resources."""
+        if not self.container:
+            return
+
         try:
-            if self.container:
-                self.update_status(SandboxStatus.STOPPING)
-                self.container.stop(timeout=10)
-                self.update_status(SandboxStatus.STOPPED)
+            self.update_status(SandboxStatus.STOPPING)
+            await self.cleanup()
+            self.update_status(SandboxStatus.STOPPED)
         except Exception as e:
             logger.error(f'Error stopping container: {e}')
             self.update_status(SandboxStatus.ERROR)
+            raise
 
     async def cleanup(self) -> None:
         """Clean up Docker resources."""
         try:
-
+            # Stop and remove container
             if self.container:
                 try:
+                    # Stop container if running
+                    self.container.reload()
+                    if self.container.status == 'running':
+                        self.container.stop(timeout=10)
+
                     # Remove container if configured to do so
                     if self.config.remove_on_exit:
                         self.container.remove(force=True)
-                    else:
-                        self.container.stop(timeout=5)
+                        logger.debug(f'Container {self.container.id} removed')
                 except Exception as e:
                     logger.error(f'Error cleaning up container: {e}')
                 finally:
                     self.container = None
 
+            # Close Docker client
             if self.client:
                 try:
                     self.client.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f'Error closing Docker client: {e}')
                 finally:
                     self.client = None
 

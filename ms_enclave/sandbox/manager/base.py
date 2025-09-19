@@ -1,13 +1,21 @@
 """Base sandbox manager interface."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ..model import SandboxConfig, SandboxInfo, SandboxStatus, SandboxType, ToolResult
+
+if TYPE_CHECKING:
+    from ..boxes import Sandbox
 
 
 class SandboxManager(ABC):
     """Abstract base class for sandbox managers."""
+
+    def __init__(self):
+        """Initialize the sandbox manager."""
+        self._running = False
+        self._sandboxes: Dict[str, 'Sandbox'] = {}
 
     @abstractmethod
     async def start(self) -> None:

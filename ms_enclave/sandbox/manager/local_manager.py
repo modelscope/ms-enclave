@@ -24,10 +24,9 @@ class LocalSandboxManager(SandboxManager):
         Args:
             cleanup_interval: Interval between cleanup runs in seconds
         """
-        self._sandboxes: Dict[str, Sandbox] = {}
+        super().__init__()
         self._cleanup_interval = cleanup_interval
         self._cleanup_task: Optional[asyncio.Task] = None
-        self._running = False
 
     async def start(self) -> None:
         """Start the sandbox manager."""
@@ -173,7 +172,6 @@ class LocalSandboxManager(SandboxManager):
 
         try:
             await sandbox.stop()
-            await sandbox.cleanup()
             del self._sandboxes[sandbox_id]
             logger.info(f'Deleted sandbox {sandbox_id}')
             return True
