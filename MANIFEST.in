@@ -1,0 +1,7 @@
+include README.md
+
+# Include all resources (code + other files) inside the package
+recursive-include ms_enclave *
+
+# Exclude cache/compiled artifacts
+global-exclude *.py[cod] __pycache__ *.so *.dylib
