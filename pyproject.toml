@@ -4,10 +4,12 @@ dynamic = ["version"]
 description = "Modularized and Stable Sandbox runtime environment."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "Apache-2.0"
+license = {text = "Apache License 2.0"}
 authors = [
-    { name = "ModelScope team", email = "contact@modelscope.cn" },
+  {name = "ModelScope team"},
+  {email = "contact@modelscope.cn"}
 ]
+keywords = ["python", "llm", "sandbox"]
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
@@ -23,7 +25,11 @@ dependencies = [
 Homepage = "https://github.com/modelscope/ms-enclave"
 
 [tool.setuptools]
-packages = { find = { where = ["."] , exclude = ["tests*", "examples*"]} }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ms_enclave*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "ms_enclave.version.__version__" }
