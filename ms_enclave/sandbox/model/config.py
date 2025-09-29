@@ -21,7 +21,10 @@ class DockerSandboxConfig(SandboxConfig):
 
     image: str = Field('python:3.11-slim', description='Docker image name')
     command: Optional[Union[str, List[str]]] = Field(None, description='Container command')
-    volumes: Dict[str, str] = Field(default_factory=dict, description='Volume mounts')
+    volumes: Dict[str, Dict[str, str]] = Field(
+        default_factory=dict,
+        description="Volume mounts. Format: { host_path: {'bind': container_path, 'mode': 'rw|ro'} }"
+    )
     ports: Dict[str, str] = Field(default_factory=dict, description='Port mappings')
     network: Optional[str] = Field('bridge', description='Network name')
     memory_limit: str = Field(default='1g', description='Memory limit')
