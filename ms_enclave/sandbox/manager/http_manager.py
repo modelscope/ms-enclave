@@ -13,18 +13,21 @@ logger = get_logger()
 
 
 class HttpSandboxManager(SandboxManager):
-    """HTTP-based sandbox manager for remote services."""
+    """HTTP-based sandbox manager for remote services.
+    """
 
-    def __init__(self, base_url: str, timeout: int = 30):
+    def __init__(self, base_url: str, timeout: int = 30, api_key: Optional[str] = None):
         """Initialize HTTP sandbox manager.
 
         Args:
             base_url: Base URL of the sandbox service
             timeout: Request timeout in seconds
+            api_key: Optional API key to include as ``X-API-Key`` header for all requests
         """
         super().__init__()
         self.base_url = base_url.rstrip('/')
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self._default_headers: Optional[Dict[str, str]] = {'X-API-Key': api_key} if api_key else None
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def start(self) -> None:
@@ -33,7 +36,11 @@ class HttpSandboxManager(SandboxManager):
             return
 
         self._connector = aiohttp.TCPConnector()
-        self._session = aiohttp.ClientSession(connector=self._connector, timeout=self.timeout)
+        self._session = aiohttp.ClientSession(
+            connector=self._connector,
+            timeout=self.timeout,
+            headers=self._default_headers
+        )
         self._running = True
         logger.info(f'HTTP sandbox manager started, connected to {self.base_url}')
 

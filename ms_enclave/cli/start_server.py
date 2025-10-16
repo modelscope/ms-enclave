@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from argparse import ArgumentParser
+from typing import Optional
 
 from ms_enclave.cli.base import CLICommand
 from ms_enclave.sandbox import create_server
@@ -34,8 +35,9 @@ class ServerCMD(CLICommand):
         host: str = getattr(self.args, 'host', '0.0.0.0')
         port: int = getattr(self.args, 'port', 8000)
         log_level: str = getattr(self.args, 'log_level', 'info')
+        api_key: Optional[str] = getattr(self.args, 'api_key', None)
 
-        server = create_server(cleanup_interval=cleanup_interval)
+        server = create_server(cleanup_interval=cleanup_interval, api_key=api_key)
 
         logger.info('Starting Sandbox Server...')
         logger.info('API docs: http://%s:%d/docs', host, port)
@@ -73,4 +75,10 @@ def add_argument(parser: ArgumentParser) -> None:
         default=300,
         metavar='SECONDS',
         help='Background cleanup interval in seconds (default: 300)'
+    )
+    parser.add_argument(
+        '--api-key',
+        type=str,
+        default=None,
+        help='Optional API key to protect endpoints. If omitted, no authentication is enforced.'
     )
