@@ -68,16 +68,20 @@ asyncio.run(main())
 
 ### HTTP服务器用法
 
+**1. 使用命令行启动服务器**
+
+```shell
+ms-enclave server --host 0.0.0.0 --port 8000
+```
+
+**2. 使用Python脚本启动服务器**
+
 ```python
 from ms_enclave.sandbox import create_server
 
 # 启动沙箱服务器
 server = create_server(cleanup_interval=300)
 server.run(host='127.0.0.1', port=8000)
-```
-或者
-```shell
-python -m ms_enclave.run_server
 ```
 
 ### HTTP管理器客户端
