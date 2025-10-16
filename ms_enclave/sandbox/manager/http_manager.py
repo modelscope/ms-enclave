@@ -37,9 +37,7 @@ class HttpSandboxManager(SandboxManager):
 
         self._connector = aiohttp.TCPConnector()
         self._session = aiohttp.ClientSession(
-            connector=self._connector,
-            timeout=self.timeout,
-            headers=self._default_headers
+            connector=self._connector, timeout=self.timeout, headers=self._default_headers
         )
         self._running = True
         logger.info(f'HTTP sandbox manager started, connected to {self.base_url}')

@@ -65,13 +65,23 @@ class DockerSandbox(Sandbox):
             raise RuntimeError(f'Failed to start Docker sandbox: {e}')
 
     async def stop(self) -> None:
-        """Stop the Docker container and clean up resources."""
+        """Stop the Docker container without removing it unless configured.
+
+        When remove_on_exit is False, this method stops the container but keeps
+        the container reference so get_execution_context() can return it.
+        """
         if not self.container:
+            self.update_status(SandboxStatus.STOPPED)
             return
 
         try:
             self.update_status(SandboxStatus.STOPPING)
-            await self.cleanup()
+            await self.stop_container()
+
+            # If configured to remove on exit, perform full cleanup (removes container and closes client)
+            if self.config.remove_on_exit:
+                await self.cleanup()
+
             self.update_status(SandboxStatus.STOPPED)
         except Exception as e:
             logger.error(f'Error stopping container: {e}')
@@ -79,36 +89,44 @@ class DockerSandbox(Sandbox):
             raise
 
     async def cleanup(self) -> None:
-        """Clean up Docker resources."""
+        """Clean up Docker resources.
+
+        - Always stops the container if it is running.
+        - Removes the container only when remove_on_exit is True.
+        - Preserves container reference and client when remove_on_exit is False.
+        """
+        if self.container:
+            try:
+                self.container.remove(force=True)
+                logger.debug(f'Container {self.container.id} removed')
+            except Exception as e:
+                logger.error(f'Error cleaning up container: {e}')
+            finally:
+                # Only drop the reference when we actually removed it
+                self.container = None
+
+        # Close Docker client only if we dropped the container reference
+        if self.client:
+            try:
+                self.client.close()
+            except Exception as e:
+                logger.warning(f'Error closing Docker client: {e}')
+            finally:
+                self.client = None
+
+    async def stop_container(self) -> None:
+        """Stop the container if it is running."""
+        if not self.container:
+            return
         try:
-            # Stop and remove container
-            if self.container:
-                try:
-                    # Stop container if running
-                    self.container.reload()
-                    if self.container.status == 'running':
-                        self.container.stop(timeout=10)
-
-                    # Remove container if configured to do so
-                    if self.config.remove_on_exit:
-                        self.container.remove(force=True)
-                        logger.debug(f'Container {self.container.id} removed')
-                except Exception as e:
-                    logger.error(f'Error cleaning up container: {e}')
-                finally:
-                    self.container = None
-
-            # Close Docker client
-            if self.client:
-                try:
-                    self.client.close()
-                except Exception as e:
-                    logger.warning(f'Error closing Docker client: {e}')
-                finally:
-                    self.client = None
-
+            self.container.reload()
+            if self.container.status == SandboxStatus.RUNNING:
+                self.container.stop(timeout=10)
+        except NotFound:
+            logger.warning('Container not found while stopping')
         except Exception as e:
-            logger.error(f'Error during cleanup: {e}')
+            logger.error(f'Error stopping container: {e}')
+            raise
 
     async def get_execution_context(self) -> Any:
         """Return the container for tool execution."""
