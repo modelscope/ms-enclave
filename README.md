@@ -68,16 +68,22 @@ asyncio.run(main())
 
 ### HTTP Server Usage
 
+
+**1. Launch the server using the command line**
+
+```shell
+ms-enclave server --host 0.0.0.0 --port 8000
+```
+or
+
+**2. Initiate the server using a Python script**
+
 ```python
 from ms_enclave.sandbox import create_server
 
-# Start the sandbox server
+# Launch the sandbox server
 server = create_server(cleanup_interval=300)
 server.run(host='127.0.0.1', port=8000)
-```
-or
-```shell
-python -m ms_enclave.run_server
 ```
 
 ### HTTP Manager Client

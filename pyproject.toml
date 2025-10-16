@@ -24,6 +24,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/modelscope/ms-enclave"
 
+[project.scripts]
+ms-enclave = "ms_enclave.cli.cli:run_cmd"
+
 [tool.setuptools]
 include-package-data = true
 
