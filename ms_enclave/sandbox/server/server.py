@@ -1,11 +1,12 @@
-"""FastAPI server for sandbox system."""
+"""FastAPI server for sandbox system with optional API key authentication."""
 
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from ..manager import LocalSandboxManager
 from ..model import (
@@ -21,15 +22,18 @@ from ..model import (
 
 
 class SandboxServer:
-    """FastAPI-based sandbox server."""
+    """FastAPI-based sandbox server.
+    """
 
-    def __init__(self, cleanup_interval: int = 300):
+    def __init__(self, cleanup_interval: int = 300, api_key: Optional[str] = None):
         """Initialize sandbox server.
 
         Args:
             cleanup_interval: Cleanup interval in seconds
+            api_key: Optional API key to protect endpoints. If None, auth is disabled.
         """
         self.manager = LocalSandboxManager(cleanup_interval)
+        self.api_key: Optional[str] = api_key
         self.app = FastAPI(
             title='Sandbox API',
             description='Agent sandbox execution environment',
@@ -37,6 +41,7 @@ class SandboxServer:
             lifespan=self.lifespan
         )
         self._setup_middleware()
+        self._setup_auth_middleware()
         self._setup_routes()
         self.start_time = time.time()
 
@@ -58,6 +63,26 @@ class SandboxServer:
             allow_methods=['*'],
             allow_headers=['*'],
         )
+
+    def _setup_auth_middleware(self) -> None:
+        """Setup optional API key authentication middleware.
+
+        When ``self.api_key`` is None, this middleware is a no-op.
+        Otherwise, it enforces that every request includes the correct API key
+        either via ``X-API-Key`` header or ``api_key`` query parameter.
+        """
+
+        @self.app.middleware('http')
+        async def auth_middleware(request: Request, call_next):  # type: ignore[unused-ignore]
+            # Fast path when auth is disabled
+            if not self.api_key:
+                return await call_next(request)
+
+            provided = request.headers.get('x-api-key') or request.query_params.get('api_key')
+            if provided == self.api_key:
+                return await call_next(request)
+
+            return JSONResponse(status_code=401, content={'detail': 'Unauthorized'})
 
     def _setup_routes(self):
         """Setup API routes."""
@@ -157,13 +182,14 @@ class SandboxServer:
 
 
 # Create a default server instance
-def create_server(cleanup_interval: int = 300) -> SandboxServer:
+def create_server(cleanup_interval: int = 300, api_key: Optional[str] = None) -> SandboxServer:
     """Create a sandbox server instance.
 
     Args:
         cleanup_interval: Cleanup interval in seconds
+        api_key: Optional API key to protect endpoints. If None, auth is disabled.
 
     Returns:
         Sandbox server instance
     """
-    return SandboxServer(cleanup_interval)
+    return SandboxServer(cleanup_interval, api_key)

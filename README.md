@@ -1,25 +1,22 @@
 # ms-enclave
 
-Modularized and Stable Sandbox runtime environment
+A modular and stable sandbox runtime environment
 
 ## Overview
 
-ms-enclave is a modularized and stable sandbox runtime environment that provides secure isolated execution environments for applications. It supports multiple programming languages and frameworks, ensuring code runs safely in controlled environments with Docker-based containerization.
+ms-enclave is a modular and stable sandbox runtime environment that provides a secure isolated execution environment for applications. It achieves strong isolation through Docker containers, with accompanying local/HTTP managers and an extensible tool system, enabling you to safely and efficiently execute code in a controlled environment.
 
-## Features
+- 🔒 Secure Isolation: Full isolation and resource limitation based on Docker
+- 🧩 Modular: Extensible sandbox and tools (registration factory)
+- ⚡ Stable Performance: Simple implementation, fast startup, lifecycle management
+- 🌐 Remote Management: Built-in FastAPI service, supports HTTP management
+- 🔧 Tool System: Standardized tools enabled by sandbox type (OpenAI-style schema)
 
-- 🔒 **Secure Isolation**: Complete isolation using Docker containers
-- 🧩 **Modular Design**: Plugin-based architecture with extensible tools
-- ⚡ **High Performance**: Optimized runtime performance with resource monitoring
-- 📊 **Resource Monitoring**: Real-time CPU, memory, and resource usage tracking
-- 🛡️ **Security Policies**: Configurable security policies and permission control
-- 🌐 **HTTP API**: RESTful API for remote sandbox management
-- 🔧 **Tool System**: Extensible tool system for different execution environments
+## System Requirements
 
-## Requirements
-
-- Python >= 3.9
+- Python >= 3.10
 - Operating System: Linux, macOS, or Windows with Docker support
+- Docker daemon running locally (Notebook sandbox requires port 8888 open)
 
 ## Installation
 
@@ -37,9 +34,9 @@ cd ms-enclave
 pip install -e .
 ```
 
-## Quick Start
+## Quick Start: Minimal Example (SandboxFactory)
 
-### Basic Usage
+> Tools need to be explicitly enabled in the tools_config setting, otherwise they won't be registered.
 
 ```python
 import asyncio
@@ -47,46 +44,117 @@ from ms_enclave.sandbox.boxes import SandboxFactory
 from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
 
 async def main():
-    # Create Docker sandbox configuration
     config = DockerSandboxConfig(
         image='python:3.11-slim',
-        timeout=30,
         memory_limit='512m',
-        tools_config={'python_executor': {}}
+        tools_config={
+            'python_executor': {},
+            'file_operation': {},
+            'shell_executor': {}
+        }
     )
 
-    # Create and use sandbox with context manager
     async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
-        # Execute Python code
-        result = await sandbox.execute_tool('python_executor', {
-            'code': "print('Hello from sandbox!')\nresult = 2 + 2\nprint(f'2 + 2 = {result}')"
+        # 1) Write a file
+        await sandbox.execute_tool('file_operation', {
+            'operation': 'write', 'file_path': '/sandbox/hello.txt', 'content': 'hi from enclave'
         })
-        print(f'Result: {result.output}')
+        # 2) Execute Python code
+        result = await sandbox.execute_tool('python_executor', {
+            'code': "print('Hello from sandbox!')\nprint(open('/sandbox/hello.txt').read())"
+        })
+        print(result.output)
 
 asyncio.run(main())
 ```
 
-### HTTP Server Usage
+---
 
+## Typical Usage Scenarios and Examples
 
-**1. Launch the server using the command line**
+- Directly using SandboxFactory: Create/destroy sandboxes in a single process—lightweight; suitable for scripts or one-off tasks
+- Using LocalSandboxManager: Manage the lifecycle/cleanup of multiple sandboxes locally; suitable for service-oriented or multi-task parallel scenarios
+- Using HttpSandboxManager: Unified sandbox management through remote HTTP services; suitable for cross-machine/distributed or more isolated deployments
 
-```shell
-ms-enclave server --host 0.0.0.0 --port 8000
-```
-or
+### 1) Direct Sandbox Creation: SandboxFactory (Lightweight, Temporary)
 
-**2. Initiate the server using a Python script**
+Usage Scenarios:
+
+- Temporarily execute code in scripts or microservices
+- Fine-grained control over sandbox lifecycle (cleanup upon context exit)
+
+Example (Docker Sandbox + Python Execution):
 
 ```python
-from ms_enclave.sandbox import create_server
+import asyncio
+from ms_enclave.sandbox.boxes import SandboxFactory
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
 
-# Launch the sandbox server
-server = create_server(cleanup_interval=300)
-server.run(host='127.0.0.1', port=8000)
+async def main():
+    cfg = DockerSandboxConfig(
+        tools_config={'python_executor': {}}
+    )
+    async with SandboxFactory.create_sandbox(SandboxType.DOCKER, cfg) as sb:
+        r = await sb.execute_tool('python_executor', {
+            'code': 'import platform; print(platform.python_version())'
+        })
+        print(r.output)
+
+asyncio.run(main())
 ```
 
-### HTTP Manager Client
+### 2) Local Unified Management: LocalSandboxManager (Multi-Sandbox, Lifecycle Management)
+
+Usage Scenarios:
+
+- Create/manage multiple sandboxes within the same process (creation, query, stop, periodic cleanup)
+- Unified view for monitoring stats and health
+
+Example:
+
+```python
+import asyncio
+from ms_enclave.sandbox.manager import LocalSandboxManager
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def main():
+    async with LocalSandboxManager() as manager:
+        cfg = DockerSandboxConfig(tools_config={'shell_executor': {}})
+        sandbox_id = await manager.create_sandbox(SandboxType.DOCKER, cfg)
+
+        # Execute command
+        res = await manager.execute_tool(sandbox_id, 'shell_executor', {'command': 'echo hello'})
+        print(res.output.strip())  # hello
+
+        # View list
+        infos = await manager.list_sandboxes()
+        print([i.id for i in infos])
+
+        # Stop and delete
+        await manager.stop_sandbox(sandbox_id)
+        await manager.delete_sandbox(sandbox_id)
+
+asyncio.run(main())
+```
+
+### 3) Remote Unified Management: HttpSandboxManager (Cross-Machine/Isolated Deployment)
+
+Usage Scenarios:
+
+- Run sandbox services on dedicated hosts/containers, invoke remotely via HTTP
+- Share a secure controlled sandbox cluster among multiple applications
+
+Start the service (choose one):
+
+```bash
+# Option A: Command line
+ms-enclave server --host 0.0.0.0 --port 8000
+
+# Option B: Python script
+python -c "from ms_enclave.sandbox import create_server; create_server().run(host='0.0.0.0', port=8000)"
+```
+
+Client Example:
 
 ```python
 import asyncio
@@ -94,172 +162,122 @@ from ms_enclave.sandbox.manager import HttpSandboxManager
 from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
 
 async def main():
-
-    async with HttpSandboxManager(base_url='http://127.0.0.1:8000') as manager:
-        # Create sandbox
-        config = DockerSandboxConfig(image='python:3.11-slim', tools_config={'python_executor': {}})
-        sandbox_id = await manager.create_sandbox(SandboxType.DOCKER, config)
-
-        # Execute code
-        result = await manager.execute_tool(
-            sandbox_id, 'python_executor',
-            {'code': 'print("Hello from remote sandbox!")'}
-        )
-        print(result.model_dump())
+    async with HttpSandboxManager(base_url='http://127.0.0.1:8000') as m:
+        cfg = DockerSandboxConfig(tools_config={'python_executor': {}})
+        sid = await m.create_sandbox(SandboxType.DOCKER, cfg)
+        r = await m.execute_tool(sid, 'python_executor', {'code': 'print("Hello remote")'})
+        print(r.output)
+        await m.delete_sandbox(sid)
 
 asyncio.run(main())
 ```
 
-## API Reference
+---
 
-### SandboxFactory
+## Sandbox Types and Tool Support
 
-#### create_sandbox(sandbox_type, config)
+Currently Supported Sandbox Types:
 
-Create a new sandbox instance.
+- DOCKER (General-purpose container execution)
+  - Supported tools:
+    - python_executor (execute Python code)
+    - shell_executor (execute Shell commands)
+    - file_operation (read/write/delete/list files)
+  - Features: Configurable memory/CPU limits, volume mounts, network toggling, privileged mode, port mapping
 
-```python
-sandbox = SandboxFactory.create_sandbox(SandboxType.DOCKER, config)
-```
+- DOCKER_NOTEBOOK (Jupyter Kernel Gateway environment)
+  - Supported tools:
+    - notebook_executor (execute code via Jupyter Kernel, supports context saving)
+  - Note: This type only loads notebook_executor; other DOCKER-specific tools won't be enabled in this sandbox.
+  - Dependencies: Requires port 8888 exposed and network enabled
 
-### Sandbox Methods
+Tool Loading Rules:
 
-#### execute_tool(tool_name, parameters)
+- Tools are initialized and made available only when explicitly declared in `tools_config`.
+- Tools validate `required_sandbox_type`; unmatched types will be ignored automatically.
 
-Execute a tool within the sandbox.
-
-```python
-result = await sandbox.execute_tool('python_executor', {
-    'code': 'print("Hello World")',
-    'timeout': 30
-})
-```
-
-#### get_available_tools()
-
-Get list of available tools.
+Example:
 
 ```python
-tools = sandbox.get_available_tools()
+DockerSandboxConfig(tools_config={'python_executor': {}, 'shell_executor': {}, 'file_operation': {}})
+DockerNotebookConfig(tools_config={'notebook_executor': {}})
 ```
 
-#### start() / stop() / cleanup()
+---
 
-Manage sandbox lifecycle.
+## Common Configuration Options
+
+- `image`: Docker image name (e.g., `python:3.11-slim` or `jupyter-kernel-gateway`)
+- `memory_limit`: Memory limit (e.g., `512m` / `1g`)
+- `cpu_limit`: CPU limit (float > 0)
+- `volumes`: Volume mounts, e.g., `{host_path: {"bind": "/container/path", "mode": "rw"}}`
+- `ports`: Port mappings, e.g., `{ "8888/tcp": ("127.0.0.1", 8888) }`
+- `network_enabled`: Enable network (Notebook sandbox requires True)
+- `remove_on_exit`: Automatically remove container on exit (default True)
+
+---
+
+## Error Handling and Debugging
 
 ```python
-await sandbox.start()
-await sandbox.stop()
-await sandbox.cleanup()
+result = await sandbox.execute_tool('python_executor', {'code': 'print(1/0)'})
+if result.error:
+    print('Error:', result.error)
+else:
+    print('Output:', result.output)
 ```
 
-### HttpSandboxManager
+---
 
-Remote sandbox management via HTTP API.
-
-#### create_sandbox(sandbox_type, config)
-
-```python
-sandbox_id = await manager.create_sandbox(SandboxType.DOCKER, config)
-```
-
-#### execute_tool(sandbox_id, tool_name, parameters)
-
-```python
-result = await manager.execute_tool(sandbox_id, 'python_executor', params)
-```
-
-#### list_sandboxes(status_filter=None)
-
-```python
-sandboxes = await manager.list_sandboxes()
-```
-
-## Examples
-
-### Advanced Python Execution
-
-```python
-async def advanced_example():
-    config = DockerSandboxConfig(
-        image='python:3.11-slim',
-        tools_config={'python_executor': {}},
-        memory_limit='1g'
-    )
-
-    async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
-        # Data processing example
-        code = '''
-import json
-import statistics
-
-data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-result = {
-    "mean": statistics.mean(data),
-    "median": statistics.median(data),
-    "stdev": statistics.stdev(data)
-}
-print(json.dumps(result, indent=2))
-'''
-
-        result = await sandbox.execute_tool('python_executor', {'code': code})
-        print(result.output)
-```
-
-
-### Error Handling
-
-```python
-async def error_handling_example():
-    config = DockerSandboxConfig(
-        image='python:3.11-slim',
-        tools_config={'python_executor': {}},
-        timeout=5
-    )
-
-    async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
-        # Handle syntax errors
-        result = await sandbox.execute_tool('python_executor', {
-            'code': 'print("Missing quote'
-        })
-
-        if result.error:
-            print(f"Error: {result.error}")
-        else:
-            print(f"Output: {result.output}")
-```
-
-## Development
-
-### Local Development Setup
+## Development and Testing
 
 ```bash
 # Clone the repository
 git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 
+# Setup virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run examples
-python examples/usage_examples.py
-python examples/server_example.py
+# Run tests
+pytest
+
+# Run examples (provided in the repository)
+python examples/sandbox_usage_examples.py
+python examples/local_manager_example.py
+python examples/server_manager_example.py
 ```
 
-## Contributing
+---
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+## Available Tools
 
-### Contributing Steps
+- `python_executor`: Execute Python code (DOCKER)
+- `shell_executor`: Execute Shell commands (DOCKER)
+- `file_operation`: Read/Write/Delete/List files (DOCKER)
+- `notebook_executor`: Execute via Jupyter Kernel (DOCKER_NOTEBOOK)
+- You can also register custom tools via the Tool factory (`@register_tool`).
+
+---
+
+## Contribution
+
+We welcome contributions! Please check [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+### Steps to Contribute
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Run tests: `pytest`
+3. Develop and add tests
+4. Run local tests: `pytest`
 5. Commit changes: `git commit -m 'Add amazing feature'`
-6. Push to branch: `git push origin feature/amazing-feature`
+6. Push the branch: `git push origin feature/amazing-feature`
 7. Submit a Pull Request
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
