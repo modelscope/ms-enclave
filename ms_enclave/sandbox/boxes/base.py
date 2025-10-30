@@ -33,7 +33,7 @@ class Sandbox(abc.ABC):
             config: Sandbox configuration
             sandbox_id: Optional sandbox ID (will be generated if not provided)
         """
-        self.id = sandbox_id or str(uuid.uuid())
+        self.id = sandbox_id or uuid.ShortUUID(alphabet='23456789abcdefghijkmnopqrstuvwxyz').random(length=8)
         self.config = config
         self.status = SandboxStatus.INITIALIZING
         self.created_at = datetime.now()
@@ -136,12 +136,15 @@ class Sandbox(abc.ABC):
         result = await tool.execute(sandbox_context=self, **parameters)
         return result
 
-    async def execute_command(self, command: Union[str, List[str]], timeout: Optional[int] = None) -> CommandResult:
+    async def execute_command(
+        self, command: Union[str, List[str]], timeout: Optional[int] = None, stream: bool = True
+    ) -> CommandResult:
         """Execute a command in the sandbox environment.
 
         Args:
             command: Command to execute
             timeout: Optional execution timeout in seconds
+            stream: Whether to stream output (if supported)
         """
         raise NotImplementedError('execute_command must be implemented by subclasses')
 

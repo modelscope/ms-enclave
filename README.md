@@ -1,10 +1,23 @@
-# ms-enclave
+<p align="center">
+    <br>
+    <img src="doc/asset/image/logo.png"/>
+    <br>
+<p>
 
-A modular and stable sandbox runtime environment
+<p align="center">
+  <a href="README_zh.md">中文</a> &nbsp ｜ &nbsp English &nbsp
+</p>
+
+<p align="center">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.10-5be.svg">
+<a href="https://badge.fury.io/py/ms-enclave"><img src="https://badge.fury.io/py/ms-enclave.svg" alt="PyPI version" height="18"></a>
+<a href="https://pypi.org/project/ms-enclave"><img alt="PyPI - Downloads" src="https://static.pepy.tech/badge/ms-enclave"></a>
+<a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
+<p>
 
 ## Overview
 
-ms-enclave is a modular and stable sandbox runtime environment that provides a secure isolated execution environment for applications. It achieves strong isolation through Docker containers, with accompanying local/HTTP managers and an extensible tool system, enabling you to safely and efficiently execute code in a controlled environment.
+ms-enclave is a modular and stable agent sandbox runtime environment that provides a secure isolated execution environment for applications. It achieves strong isolation through Docker containers, with accompanying local/HTTP managers and an extensible tool system, enabling you to safely and efficiently execute code in a controlled environment.
 
 - 🔒 Secure Isolation: Full isolation and resource limitation based on Docker
 - 🧩 Modular: Extensible sandbox and tools (registration factory)
@@ -215,6 +228,45 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 - `network_enabled`: Enable network (Notebook sandbox requires True)
 - `remove_on_exit`: Automatically remove container on exit (default True)
 
+**Example of Installing Additional Dependencies in Sandbox**
+
+```python
+async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
+    # 1) Write a file
+    requirements_file = '/sandbox/requirements.txt'
+    await sandbox.execute_tool('file_operation', {
+        'operation': 'write', 'file_path': f'{requirements_file}', 'content': 'numpy\npandas\nmodelscope\n'
+    })
+    # 2) Execute Python code
+    result = await sandbox.execute_tool('python_executor', {
+        'code': f"print('Hello from sandbox!')\nprint(open(f'{requirements_file}').read())"
+    })
+    print(result.output)
+
+    # 3) Execute CLI
+    result_cli = await sandbox.execute_command(f'pip install -r {requirements_file}')
+    print(result_cli.stdout, flush=True)
+```
+
+**Example of Reading and Writing Host Files in Sandbox**
+
+```python
+async with LocalSandboxManager() as manager:
+    # Create sandbox
+    config = DockerSandboxConfig(
+        # image='python-sandbox',
+        image='python:3.11-slim',
+        tools_config={'python_executor': {}, 'file_operation': {}},
+        volumes={'~/Code/ms-enclave/output': {'bind': '/sandbox/data', 'mode': 'rw'}}
+    )
+    sandbox_id = await manager.create_sandbox(SandboxType.DOCKER, config)
+
+    # Write file
+    result = await manager.execute_tool(
+        sandbox_id, 'file_operation', {'operation': 'write', 'file_path': '/sandbox/data/hello.txt', 'content': 'Hello, Sandbox!'}
+    )
+    print(result.model_dump())
+```
 ---
 
 ## Error Handling and Debugging

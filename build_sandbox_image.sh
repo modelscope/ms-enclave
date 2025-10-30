@@ -12,10 +12,17 @@ echo "Building Python sandbox Docker image..."
 
 # Create a temporary Dockerfile
 cat > Dockerfile.sandbox << 'EOF'
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
+
+RUN echo 'deb https://mirrors.aliyun.com/debian/ bookworm main contrib non-free non-free-firmware' > /etc/apt/sources.list && \
+    echo 'deb https://mirrors.aliyun.com/debian/ bookworm-updates main contrib non-free non-free-firmware' >> /etc/apt/sources.list && \
+    echo 'deb https://mirrors.aliyun.com/debian-security bookworm-security main contrib non-free non-free-firmware' >> /etc/apt/sources.list && \
+    apt-get update -o Acquire::Retries=5
 
 # Install basic system utilities
-RUN apt-get update && apt-get install -y \
+RUN apt-get update -o Acquire::Retries=5 \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
     curl \
     wget \
     git \
@@ -26,7 +33,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install common Python packages
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple/ --trusted-host mirrors.aliyun.com \
+    modelscope \
+    datasets==3.6.0 \
     numpy \
     pandas \
     matplotlib \
