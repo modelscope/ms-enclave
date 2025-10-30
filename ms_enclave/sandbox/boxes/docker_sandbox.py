@@ -233,9 +233,7 @@ class DockerSandbox(Sandbox):
                 stderr=f'Command timed out after {timeout} seconds'
             )
         except Exception as e:
-            return CommandResult(
-                command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
-            )
+            return CommandResult(command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e))
 
     async def _ensure_image_exists(self) -> None:
         """Ensure Docker image exists."""
