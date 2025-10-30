@@ -247,7 +247,7 @@ async with LocalSandboxManager() as manager:
         volumes={'~/Code/ms-enclave/output': {'bind': '/sandbox/data', 'mode': 'rw'}}
     )
     sandbox_id = await manager.create_sandbox(SandboxType.DOCKER, config)
-    
+
     # Write file
     result = await manager.execute_tool(
         sandbox_id, 'file_operation', {'operation': 'write', 'file_path': '/sandbox/data/hello.txt', 'content': 'Hello, Sandbox!'}

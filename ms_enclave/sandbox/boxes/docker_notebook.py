@@ -6,8 +6,6 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
-from docker import DockerClient
-
 from ms_enclave.utils import get_logger
 
 from ..model import DockerNotebookConfig, SandboxStatus, SandboxType
@@ -45,7 +43,7 @@ class DockerNotebookSandbox(DockerSandbox):
         self.kernel_id = None
         self.ws = None
         self.base_url = None
-        self.config.ports['8888/tcp'] = (self.host, self.port)
+        self.config.ports['8888/tcp'] = self.port
         self.config.network_enabled = True  # Ensure network is enabled for Jupyter
 
     @property
@@ -153,9 +151,9 @@ class DockerNotebookSandbox(DockerSandbox):
                     # Process and log build output
                     for log in build_logs[1]:  # build_logs[1] contains the build log generator
                         if 'stream' in log:
-                            logger.info(f"Docker build: {log['stream'].strip()}")
+                            logger.info(f"[📦 {self.id}] {log['stream'].strip()}")
                         elif 'error' in log:
-                            logger.error(f"Docker build error: {log['error']}")
+                            logger.error(f"[📦 {self.id}] {log['error']}")
                     return build_logs[0]  # Return the built image
 
                 await asyncio.get_event_loop().run_in_executor(None, build_image)
