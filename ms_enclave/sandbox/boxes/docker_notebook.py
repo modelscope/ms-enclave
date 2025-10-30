@@ -151,7 +151,7 @@ class DockerNotebookSandbox(DockerSandbox):
                     # Process and log build output
                     for log in build_logs[1]:  # build_logs[1] contains the build log generator
                         if 'stream' in log:
-                            logger.info(f"[📦 {self.id}] {log['stream']}")
+                            logger.info(f"[📦 {self.id}] {log['stream'].strip()}")
                         elif 'error' in log:
                             logger.error(f"[📦 {self.id}] {log['error']}")
                     return build_logs[0]  # Return the built image
