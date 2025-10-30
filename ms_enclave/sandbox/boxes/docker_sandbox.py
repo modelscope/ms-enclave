@@ -217,44 +217,25 @@ class DockerSandbox(Sandbox):
 
         loop = asyncio.get_running_loop()
 
-        if stream:
-            try:
-                exit_code, stdout, stderr = await asyncio.wait_for(
-                    loop.run_in_executor(None, lambda: self._run_streaming(command)), timeout=timeout
-                )
-                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
-                return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
-            except asyncio.TimeoutError:
-                return CommandResult(
-                    command=command,
-                    status=ExecutionStatus.TIMEOUT,
-                    exit_code=-1,
-                    stdout='',
-                    stderr=f'Command timed out after {timeout} seconds'
-                )
-            except Exception as e:
-                return CommandResult(
-                    command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
-                )
-        else:
-            try:
-                exit_code, stdout, stderr = await asyncio.wait_for(
-                    loop.run_in_executor(None, lambda: self._run_buffered(command)), timeout=timeout
-                )
-                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
-                return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
-            except asyncio.TimeoutError:
-                return CommandResult(
-                    command=command,
-                    status=ExecutionStatus.TIMEOUT,
-                    exit_code=-1,
-                    stdout='',
-                    stderr=f'Command timed out after {timeout} seconds'
-                )
-            except Exception as e:
-                return CommandResult(
-                    command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
-                )
+        run_func = self._run_streaming if stream else self._run_buffered
+        try:
+            exit_code, stdout, stderr = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: run_func(command)), timeout=timeout
+            )
+            status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+            return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
+        except asyncio.TimeoutError:
+            return CommandResult(
+                command=command,
+                status=ExecutionStatus.TIMEOUT,
+                exit_code=-1,
+                stdout='',
+                stderr=f'Command timed out after {timeout} seconds'
+            )
+        except Exception as e:
+            return CommandResult(
+                command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
+            )
 
     async def _ensure_image_exists(self) -> None:
         """Ensure Docker image exists."""
