@@ -215,6 +215,45 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 - `network_enabled`: Enable network (Notebook sandbox requires True)
 - `remove_on_exit`: Automatically remove container on exit (default True)
 
+**Example of Installing Additional Dependencies in Sandbox**
+
+```python
+async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
+    # 1) Write a file
+    requirements_file = '/sandbox/requirements.txt'
+    await sandbox.execute_tool('file_operation', {
+        'operation': 'write', 'file_path': f'{requirements_file}', 'content': 'numpy\npandas\nmodelscope\n'
+    })
+    # 2) Execute Python code
+    result = await sandbox.execute_tool('python_executor', {
+        'code': f"print('Hello from sandbox!')\nprint(open(f'{requirements_file}').read())"
+    })
+    print(result.output)
+
+    # 3) Execute CLI
+    result_cli = await sandbox.execute_command(f'pip install -r {requirements_file}')
+    print(result_cli.stdout, flush=True)
+```
+
+**Example of Reading and Writing Host Files in Sandbox**
+
+```python
+async with LocalSandboxManager() as manager:
+    # Create sandbox
+    config = DockerSandboxConfig(
+        # image='python-sandbox',
+        image='python:3.11-slim',
+        tools_config={'python_executor': {}, 'file_operation': {}},
+        volumes={'~/Code/ms-enclave/output': {'bind': '/sandbox/data', 'mode': 'rw'}}
+    )
+    sandbox_id = await manager.create_sandbox(SandboxType.DOCKER, config)
+    
+    # Write file
+    result = await manager.execute_tool(
+        sandbox_id, 'file_operation', {'operation': 'write', 'file_path': '/sandbox/data/hello.txt', 'content': 'Hello, Sandbox!'}
+    )
+    print(result.model_dump())
+```
 ---
 
 ## Error Handling and Debugging
