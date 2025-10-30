@@ -132,43 +132,127 @@ class DockerSandbox(Sandbox):
         """Return the container for tool execution."""
         return self.container
 
-    async def execute_command(self, command: Union[str, List[str]], timeout: Optional[int] = None) -> CommandResult:
-        """Execute a command in the container."""
+    def _run_streaming(self, command: Union[str, List[str]]) -> tuple[int, str, str]:
+        """Execute command with streaming logs using low-level API.
+
+        Returns:
+            A tuple of (exit_code, stdout, stderr)
+        """
+        if not self.client or not self.container:
+            raise RuntimeError('Container is not running')
+
+        # Use low-level API for precise control over streaming and exit code.
+        exec_id = self.client.api.exec_create(
+            container=self.container.id,
+            cmd=command,
+            tty=False,
+        )['Id']
+
+        stdout_parts: List[str] = []
+        stderr_parts: List[str] = []
+
+        try:
+            for chunk in self.client.api.exec_start(exec_id, stream=True, demux=True):
+                if not chunk:
+                    continue
+                out, err = chunk  # each is Optional[bytes]
+                if out:
+                    text = out.decode('utf-8', errors='replace')
+                    stdout_parts.append(text)
+                    for line in text.splitlines():
+                        logger.info(f'[📦 {self.id}] {line}')
+                if err:
+                    text = err.decode('utf-8', errors='replace')
+                    stderr_parts.append(text)
+                    for line in text.splitlines():
+                        logger.error(f'[📦 {self.id}] {line}')
+        finally:
+            inspect = self.client.api.exec_inspect(exec_id)
+            exit_code = inspect.get('ExitCode', -1)
+
+        return exit_code, ''.join(stdout_parts), ''.join(stderr_parts)
+
+    def _run_buffered(self, command: Union[str, List[str]]) -> tuple[int, str, str]:
+        """Execute command and return buffered output using high-level API.
+
+        Returns:
+            A tuple of (exit_code, stdout, stderr)
+        """
         if not self.container:
             raise RuntimeError('Container is not running')
 
-        try:
-            # Determine actual timeout
-            actual_timeout = timeout or 30
+        res = self.container.exec_run(command, tty=False, stream=False, demux=True)
+        out_tuple = res.output
+        if isinstance(out_tuple, tuple):
+            out_bytes, err_bytes = out_tuple
+        else:
+            # Fallback: when demux was not honored, treat all as stdout
+            out_bytes, err_bytes = out_tuple, b''
 
-            # Execute command asynchronously
-            exec_result = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
-                    None, lambda: self.container.exec_run(command, tty=True, stream=False, demux=True)
-                ),
-                timeout=actual_timeout
-            )
+        stdout = out_bytes.decode('utf-8', errors='replace') if out_bytes else ''
+        stderr = err_bytes.decode('utf-8', errors='replace') if err_bytes else ''
+        return res.exit_code, stdout, stderr
 
-            stdout = exec_result.output[0].decode('utf-8') if exec_result.output[0] else ''
-            stderr = exec_result.output[1].decode('utf-8') if exec_result.output[1] else ''
+    async def execute_command(
+        self, command: Union[str, List[str]], timeout: Optional[int] = None, stream: bool = True
+    ) -> CommandResult:
+        """Execute a command in the container.
 
-            return CommandResult(
-                command=command,
-                status=ExecutionStatus.SUCCESS if exec_result.exit_code == 0 else ExecutionStatus.ERROR,
-                exit_code=exec_result.exit_code,
-                stdout=stdout,
-                stderr=stderr
-            )
-        except asyncio.TimeoutError:
-            return CommandResult(
-                command=command,
-                status=ExecutionStatus.TIMEOUT,
-                exit_code=-1,
-                stdout='',
-                stderr=f'Command timed out after {actual_timeout} seconds'
-            )
-        except Exception as e:
-            return CommandResult(command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e))
+        When stream=True (default), logs are printed in real-time through the logger,
+        while stdout/stderr are still accumulated and returned in the result.
+        When stream=False, the command is executed and buffered, returning the full output at once.
+
+        Args:
+            command: Command to run (str or list)
+            timeout: Optional timeout in seconds
+            stream: Whether to stream logs in real time
+
+        Returns:
+            CommandResult with status, exit_code, stdout and stderr
+        """
+        if not self.container or not self.client:
+            raise RuntimeError('Container is not running')
+
+        loop = asyncio.get_running_loop()
+
+        if stream:
+            try:
+                exit_code, stdout, stderr = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: self._run_streaming(command)), timeout=timeout
+                )
+                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+                return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
+            except asyncio.TimeoutError:
+                return CommandResult(
+                    command=command,
+                    status=ExecutionStatus.TIMEOUT,
+                    exit_code=-1,
+                    stdout='',
+                    stderr=f'Command timed out after {timeout} seconds'
+                )
+            except Exception as e:
+                return CommandResult(
+                    command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
+                )
+        else:
+            try:
+                exit_code, stdout, stderr = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: self._run_buffered(command)), timeout=timeout
+                )
+                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+                return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
+            except asyncio.TimeoutError:
+                return CommandResult(
+                    command=command,
+                    status=ExecutionStatus.TIMEOUT,
+                    exit_code=-1,
+                    stdout='',
+                    stderr=f'Command timed out after {timeout} seconds'
+                )
+            except Exception as e:
+                return CommandResult(
+                    command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
+                )
 
     async def _ensure_image_exists(self) -> None:
         """Ensure Docker image exists."""
