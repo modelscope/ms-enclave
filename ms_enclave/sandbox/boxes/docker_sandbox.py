@@ -168,7 +168,9 @@ class DockerSandbox(Sandbox):
                         logger.error(f'[📦 {self.id}] {line}')
         finally:
             inspect = self.client.api.exec_inspect(exec_id)
-            exit_code = inspect.get('ExitCode', -1)
+            exit_code = inspect.get('ExitCode')
+            if exit_code is None:
+                exit_code = -1
 
         return exit_code, ''.join(stdout_parts), ''.join(stderr_parts)
 
