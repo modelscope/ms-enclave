@@ -1,10 +1,23 @@
-# ms-enclave
+<p align="center">
+    <br>
+    <img src="doc/asset/image/logo.png"/>
+    <br>
+<p>
 
-A modular and stable sandbox runtime environment
+<p align="center">
+  <a href="README_zh.md">中文</a> &nbsp ｜ &nbsp English &nbsp
+</p>
+
+<p align="center">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.10-5be.svg">
+<a href="https://badge.fury.io/py/ms-enclave"><img src="https://badge.fury.io/py/ms-enclave.svg" alt="PyPI version" height="18"></a>
+<a href="https://pypi.org/project/ms-enclave"><img alt="PyPI - Downloads" src="https://static.pepy.tech/badge/ms-enclave"></a>
+<a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
+<p>
 
 ## Overview
 
-ms-enclave is a modular and stable sandbox runtime environment that provides a secure isolated execution environment for applications. It achieves strong isolation through Docker containers, with accompanying local/HTTP managers and an extensible tool system, enabling you to safely and efficiently execute code in a controlled environment.
+ms-enclave is a modular and stable agent sandbox runtime environment that provides a secure isolated execution environment for applications. It achieves strong isolation through Docker containers, with accompanying local/HTTP managers and an extensible tool system, enabling you to safely and efficiently execute code in a controlled environment.
 
 - 🔒 Secure Isolation: Full isolation and resource limitation based on Docker
 - 🧩 Modular: Extensible sandbox and tools (registration factory)
