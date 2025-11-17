@@ -67,14 +67,7 @@ class Sandbox(abc.ABC):
         for tool_name, config in self.config.tools_config.items():
             try:
                 tool = ToolFactory.create_tool(tool_name, **config)
-                if tool.enabled:
-                    # Check if tool is compatible with this sandbox
-                    if (tool.required_sandbox_type is None or tool.required_sandbox_type == self.sandbox_type):
-                        self._tools[tool_name] = tool
-                    else:
-                        logger.warning(
-                            f'Tool {tool_name} requires {tool.required_sandbox_type} but sandbox is {self.sandbox_type}'
-                        )
+                self.add_tool(tool)
             except Exception as e:
                 logger.error(f'Failed to initialize tool {tool_name}: {e}')
 
@@ -103,14 +96,25 @@ class Sandbox(abc.ABC):
             logger.warning(f'Tool {tool.name} is already added to the sandbox')
             return
         if tool.enabled:
-            if (tool.required_sandbox_type is None or tool.required_sandbox_type == self.sandbox_type):
+            if tool.is_compatible_with_sandbox(self.sandbox_type):
                 self._tools[tool.name] = tool
             else:
                 logger.warning(
-                    f'Tool {tool.name} requires {tool.required_sandbox_type} but sandbox is {self.sandbox_type}'
+                    f"Tool '{tool.name}' requires sandbox type '{tool.required_sandbox_type}' "
+                    f"but this is a '{self.sandbox_type}' sandbox. "
+                    f'Compatible types: {SandboxType.get_compatible_types(self.sandbox_type)}'
                 )
         else:
             logger.warning(f'Tool {tool.name} is not enabled and cannot be added')
+
+    def list_tools(self) -> List[str]:
+        """
+        List all registered tools compatible with this sandbox.
+
+        Returns:
+            List of tool names
+        """
+        return list(self._tools.keys())
 
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> ToolResult:
         """Execute a tool with given parameters.

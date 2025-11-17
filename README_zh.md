@@ -38,6 +38,8 @@ ms-enclave 是一个模块化且稳定的沙箱运行时环境，为应用程序
 
 ```bash
 pip install ms-enclave
+# 如果需要 Docker 支持，安装额外依赖
+pip install 'ms-enclave[docker]'
 ```
 
 ### 从源码安装
@@ -46,6 +48,8 @@ pip install ms-enclave
 git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 pip install -e .
+# 如果需要 Docker 支持，安装额外依赖
+pip install -e '.[docker]'
 ```
 
 ## 快速开始：最小可用示例（SandboxFactory）

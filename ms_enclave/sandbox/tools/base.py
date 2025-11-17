@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class Tool(ABC):
-    """Abstract base class for all tools."""
+    """Base class for all tools."""
 
     def __init__(
         self,
@@ -55,8 +55,32 @@ class Tool(ABC):
     @property
     @abstractmethod
     def required_sandbox_type(self) -> Optional[SandboxType]:
-        """Get the required sandbox type for this tool."""
+        """
+        Return the required sandbox type for this tool.
+
+        If a tool specifies a required_sandbox_type, it can be used in:
+        1. Sandboxes of that exact type
+        2. Sandboxes that "inherit" from that type (e.g., DOCKER_NOTEBOOK can use DOCKER tools)
+
+        Returns:
+            Required sandbox type or None if tool works in any sandbox
+        """
         pass
+
+    def is_compatible_with_sandbox(self, sandbox_type: SandboxType) -> bool:
+        """
+        Check if this tool is compatible with the given sandbox type.
+
+        Args:
+            sandbox_type: The sandbox type to check compatibility with
+
+        Returns:
+            True if the tool can be used in the given sandbox type
+        """
+        if self.required_sandbox_type is None:
+            return True
+
+        return SandboxType.is_compatible(sandbox_type, self.required_sandbox_type)
 
     @abstractmethod
     async def execute(self, sandbox_context: 'Sandbox', **kwargs) -> ToolResult:

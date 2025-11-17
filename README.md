@@ -37,6 +37,8 @@ ms-enclave is a modular and stable agent sandbox runtime environment that provid
 
 ```bash
 pip install ms-enclave
+# If Docker support is needed, install extra dependencies
+pip install 'ms-enclave[docker]'
 ```
 
 ### Install from Source
@@ -45,6 +47,8 @@ pip install ms-enclave
 git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 pip install -e .
+# If Docker support is needed, install extra dependencies
+pip install -e '.[docker]'
 ```
 
 ## Quick Start: Minimal Example (SandboxFactory)
