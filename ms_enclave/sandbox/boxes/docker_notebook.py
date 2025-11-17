@@ -118,10 +118,15 @@ class DockerNotebookSandbox(DockerSandbox):
     async def _build_jupyter_image(self) -> None:
         """Build or ensure Jupyter image exists."""
         try:
-            # Check if image exists
-            self.client.images.get(self.config.image)
-            logger.info(f'Using existing Docker image: {self.config.image}')
-        except Exception:
+            # Check if image exists and trigger Docker's index refresh
+            image_exists = any(self.config.image in img.tags for img in self.client.images.list() if img.tags)
+            if image_exists:
+                self.client.images.get(self.config.image)
+                logger.info(f'Using existing Docker image: {self.config.image}')
+            else:
+                raise ValueError(f'Image "{self.config.image}" does not exist in local Docker registry')
+        except Exception as e:
+            logger.error(f'Failed to load Docker image {self.config.image}: {e}')
             logger.info(f'Building Docker image {self.config.image}...')
 
             # Create Dockerfile
