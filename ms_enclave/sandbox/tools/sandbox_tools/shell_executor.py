@@ -1,6 +1,6 @@
 """Shell command execution tool."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ms_enclave.sandbox.model import ExecutionStatus, SandboxType, ToolResult
 from ms_enclave.sandbox.tools.base import register_tool
@@ -21,8 +21,16 @@ class ShellExecutor(SandboxTool):
         type='object',
         properties={
             'command': {
-                'type': 'string',
-                'description': 'Shell command to execute'
+                'anyOf': [{
+                    'type': 'string',
+                    'description': 'Shell command to execute'
+                }, {
+                    'type': 'array',
+                    'items': {
+                        'type': 'string'
+                    },
+                    'description': 'List of shell command arguments to execute'
+                }]
             },
             'timeout': {
                 'type': 'integer',
@@ -33,12 +41,13 @@ class ShellExecutor(SandboxTool):
         required=['command']
     )
 
-    async def execute(self, sandbox_context: 'Sandbox', command: str, timeout: Optional[int] = 30) -> ToolResult:
+    async def execute(
+        self, sandbox_context: 'Sandbox', command: Union[str, List[str]], timeout: Optional[int] = 30
+    ) -> ToolResult:
         """Execute shell command in the Docker container."""
 
-        if not command.strip():
+        if not command or (isinstance(command, str) and not command.strip()):
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No command provided')
-
         try:
             result = await sandbox_context.execute_command(command, timeout=timeout)
 
