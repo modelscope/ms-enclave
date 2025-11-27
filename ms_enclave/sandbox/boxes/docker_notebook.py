@@ -117,46 +117,56 @@ class DockerNotebookSandbox(DockerSandbox):
 
     async def _build_jupyter_image(self) -> None:
         """Build or ensure Jupyter image exists."""
+        # Step 1: Try to get the image directly
         try:
-            # Check if image exists
             self.client.images.get(self.config.image)
             logger.info(f'Using existing Docker image: {self.config.image}')
-        except Exception:
-            logger.info(f'Building Docker image {self.config.image}...')
+            return
+        except Exception as e:
+            logger.debug(f'Direct image get failed: {e}, trying list method...')
 
-            # Create Dockerfile
-            dockerfile_content = dedent(
-                """\
-                FROM python:3.12-slim
+        # Step 2: Try to find image in list
+        image_exists = any(self.config.image in img.tags for img in self.client.images.list() if img.tags)
+        if image_exists:
+            logger.info(f'Using existing Docker image: {self.config.image}')
+            return
 
-                RUN pip install jupyter_kernel_gateway jupyter_client ipykernel
+        # Step 3: Image not found, build it
+        logger.info(f'Building Docker image {self.config.image}...')
 
-                # Install and register the Python kernel
-                RUN python -m ipykernel install --sys-prefix --name python3 --display-name "Python 3"
+        # Create Dockerfile
+        dockerfile_content = dedent(
+            """\
+            FROM python:3.12-slim
 
-                EXPOSE 8888
-                CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip=0.0.0.0", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin=*"]
-                """
-            )
+            RUN pip install jupyter_kernel_gateway jupyter_client ipykernel
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                dockerfile_path = Path(tmpdir) / 'Dockerfile'
-                dockerfile_path.write_text(dockerfile_content)
+            # Install and register the Python kernel
+            RUN python -m ipykernel install --sys-prefix --name python3 --display-name "Python 3"
 
-                # Build image with output
-                def build_image():
-                    build_logs = self.client.images.build(
-                        path=tmpdir, dockerfile='Dockerfile', tag=self.config.image, rm=True
-                    )
-                    # Process and log build output
-                    for log in build_logs[1]:  # build_logs[1] contains the build log generator
-                        if 'stream' in log:
-                            logger.info(f"[📦 {self.id}] {log['stream'].strip()}")
-                        elif 'error' in log:
-                            logger.error(f"[📦 {self.id}] {log['error']}")
-                    return build_logs[0]  # Return the built image
+            EXPOSE 8888
+            CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip=0.0.0.0", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin=*"]
+            """
+        )
 
-                await asyncio.get_event_loop().run_in_executor(None, build_image)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dockerfile_path = Path(tmpdir) / 'Dockerfile'
+            dockerfile_path.write_text(dockerfile_content)
+
+            # Build image with output
+            def build_image():
+                build_logs = self.client.images.build(
+                    path=tmpdir, dockerfile='Dockerfile', tag=self.config.image, rm=True
+                )
+                # Process and log build output
+                for log in build_logs[1]:  # build_logs[1] contains the build log generator
+                    if 'stream' in log:
+                        logger.info(f"[📦 {self.id}] {log['stream'].strip()}")
+                    elif 'error' in log:
+                        logger.error(f"[📦 {self.id}] {log['error']}")
+                return build_logs[0]  # Return the built image
+
+            await asyncio.get_event_loop().run_in_executor(None, build_image)
 
     async def _create_kernel(self) -> None:
         """Create a new kernel and establish websocket connection."""
