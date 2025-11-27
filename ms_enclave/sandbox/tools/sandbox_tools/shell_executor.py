@@ -46,9 +46,7 @@ class ShellExecutor(SandboxTool):
     ) -> ToolResult:
         """Execute shell command in the Docker container."""
 
-        if isinstance(command, str) and not command.strip():
-            return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No command provided')
-        if isinstance(command, list) and not command:
+        if not command or (isinstance(command, str) and not command.strip()):
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No command provided')
         try:
             result = await sandbox_context.execute_command(command, timeout=timeout)
