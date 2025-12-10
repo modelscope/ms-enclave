@@ -252,7 +252,8 @@ class MultiCodeExecutor(SandboxTool):
             return ''
         return f'export PATH="{new_path}";'
 
-    async def _get_cpp_rt_flags(self, sandbox_context: 'DockerSandbox', workdir: str, timeout: Optional[int]) -> List[str]:
+    async def _get_cpp_rt_flags(self, sandbox_context: 'DockerSandbox', workdir: str,
+                                timeout: Optional[int]) -> List[str]:
         """Detect available optional gcc link flags by compiling a tiny program."""
         optional_flags = ['-lcrypto', '-lssl', '-lpthread']
         # Write a tiny C++ file
@@ -280,8 +281,9 @@ class MultiCodeExecutor(SandboxTool):
         prefixed_run = f'{env_prefix} {run_cmd}'
         return prefixed_build, prefixed_run
 
-    async def _prebuild_setup(self, sandbox_context: 'DockerSandbox', lang: str, workdir: str,
-                              compile_timeout: Optional[int]) -> Optional[ToolResult]:
+    async def _prebuild_setup(
+        self, sandbox_context: 'DockerSandbox', lang: str, workdir: str, compile_timeout: Optional[int]
+    ) -> Optional[ToolResult]:
         """Run language-specific pre-build setup. Return ToolResult on error, else None."""
         if lang != 'csharp':
             return None
