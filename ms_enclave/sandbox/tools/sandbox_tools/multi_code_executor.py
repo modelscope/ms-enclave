@@ -43,8 +43,7 @@ class MultiCodeExecutor(SandboxTool):
             },
             'compile_timeout': {
                 'type': 'integer',
-                'description': 'Compile timeout in seconds (if applicable)',
-                'default': 30
+                'description': 'Compile timeout in seconds (omit to disable compilation timeout)'
             },
             'run_timeout': {
                 'type': 'integer',
@@ -99,7 +98,7 @@ class MultiCodeExecutor(SandboxTool):
         language: str,
         code: str,
         files: Optional[Dict[str, str]] = None,
-        compile_timeout: Optional[int] = 30,
+        compile_timeout: Optional[int] = None,
         run_timeout: Optional[int] = 30
     ) -> ToolResult:
         """Execute code by preparing a per-run workdir under /tmp and issuing build/run commands."""
@@ -119,7 +118,7 @@ class MultiCodeExecutor(SandboxTool):
                     await self._write_file_to_container(sandbox_context, os.path.join(workdir, safe_name), content)
 
             # Pre-build setup (e.g., initialize a C# project)
-            prebuild_error = await self._prebuild_setup(sandbox_context, lang, workdir, compile_timeout or 30)
+            prebuild_error = await self._prebuild_setup(sandbox_context, lang, workdir, compile_timeout)
             if prebuild_error:
                 return prebuild_error
 
@@ -147,7 +146,7 @@ class MultiCodeExecutor(SandboxTool):
             # Detect optional C++ link flags when needed
             if lang == 'cpp' and MultiCodeExecutor._cpp_rt_flags_cache is None:
                 MultiCodeExecutor._cpp_rt_flags_cache = await self._get_cpp_rt_flags(
-                    sandbox_context, workdir, compile_timeout or 30
+                    sandbox_context, workdir, compile_timeout
                 )
 
             # Build env prefix for python/pytest if available (best-effort)
@@ -160,7 +159,7 @@ class MultiCodeExecutor(SandboxTool):
             # Compile/build phase if required
             compile_output = ''
             if build_cmd:
-                build_res = await self._exec_in_dir(sandbox_context, workdir, build_cmd, timeout=compile_timeout or 30)
+                build_res = await self._exec_in_dir(sandbox_context, workdir, build_cmd, timeout=compile_timeout)
                 if build_res.exit_code != 0:
                     return ToolResult(
                         tool_name=self.name,
@@ -184,7 +183,7 @@ class MultiCodeExecutor(SandboxTool):
                 tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Execution failed: {str(e)}'
             )
 
-    async def _exec_in_dir(self, sandbox_context: 'DockerSandbox', workdir: str, cmd: str, timeout: int):
+    async def _exec_in_dir(self, sandbox_context: 'DockerSandbox', workdir: str, cmd: str, timeout: Optional[int]):
         """Execute a command in the given workdir using a POSIX shell so 'cd' works."""
         # Use /bin/sh -lc to ensure shell builtins and env prefixing operate correctly.
         sh_cmd = f'/bin/sh -lc "cd {workdir} && {cmd}"'
@@ -193,7 +192,7 @@ class MultiCodeExecutor(SandboxTool):
     async def _ensure_dir(self, sandbox_context: 'DockerSandbox', dir_path: str) -> None:
         """Create a directory inside the container if it does not exist."""
         # Use POSIX mkdir -p for idempotency
-        res = await sandbox_context.execute_command(f'mkdir -p {dir_path}', timeout=10)
+        res = await sandbox_context.execute_command(f'mkdir -p {dir_path}')
         if res.exit_code != 0:
             raise RuntimeError(f'Failed to create workdir: {dir_path} ({res.stderr})')
 
@@ -253,7 +252,7 @@ class MultiCodeExecutor(SandboxTool):
             return ''
         return f'export PATH="{new_path}";'
 
-    async def _get_cpp_rt_flags(self, sandbox_context: 'DockerSandbox', workdir: str, timeout: int) -> List[str]:
+    async def _get_cpp_rt_flags(self, sandbox_context: 'DockerSandbox', workdir: str, timeout: Optional[int]) -> List[str]:
         """Detect available optional gcc link flags by compiling a tiny program."""
         optional_flags = ['-lcrypto', '-lssl', '-lpthread']
         # Write a tiny C++ file
@@ -282,7 +281,7 @@ class MultiCodeExecutor(SandboxTool):
         return prefixed_build, prefixed_run
 
     async def _prebuild_setup(self, sandbox_context: 'DockerSandbox', lang: str, workdir: str,
-                              compile_timeout: int) -> Optional[ToolResult]:
+                              compile_timeout: Optional[int]) -> Optional[ToolResult]:
         """Run language-specific pre-build setup. Return ToolResult on error, else None."""
         if lang != 'csharp':
             return None
