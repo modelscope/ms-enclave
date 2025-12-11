@@ -407,8 +407,8 @@ class LocalSandboxManager(SandboxManager):
                         sandbox.updated_at = datetime.now()
                         logger.debug(f'Using sandbox {sandbox_id} from pool for tool {tool_name}')
                         break
-                    else:
-                        # Put back to end of queue
+                    elif sandbox:
+                        # Put back to end of queue if it exists but is not idle
                         self._sandbox_pool.append(candidate_id)
 
                 if sandbox_id:
