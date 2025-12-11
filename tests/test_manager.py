@@ -4,9 +4,79 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ms_enclave.sandbox.boxes import SandboxFactory
-from ms_enclave.sandbox.manager import LocalSandboxManager, SandboxManager
-from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxStatus, SandboxType
+from ms_enclave.sandbox.manager import HttpSandboxManager, LocalSandboxManager, SandboxManagerFactory
+from ms_enclave.sandbox.model import (
+    DockerSandboxConfig,
+    SandboxManagerConfig,
+    SandboxManagerType,
+    SandboxStatus,
+    SandboxType,
+)
+
+
+class TestSandboxManagerFactory(unittest.TestCase):
+    """Test SandboxManagerFactory functionality."""
+
+    def test_factory_registry_has_managers(self):
+        """Test that factory has registered managers."""
+        registered_types = SandboxManagerFactory.get_registered_types()
+        self.assertIn(SandboxManagerType.LOCAL, registered_types)
+        self.assertIn(SandboxManagerType.HTTP, registered_types)
+
+    def test_create_local_manager_explicit(self):
+        """Test creating local manager explicitly."""
+        manager = SandboxManagerFactory.create_manager(
+            manager_type=SandboxManagerType.LOCAL
+        )
+        self.assertIsInstance(manager, LocalSandboxManager)
+
+    def test_create_local_manager_implicit(self):
+        """Test creating local manager implicitly (no config)."""
+        manager = SandboxManagerFactory.create_manager()
+        self.assertIsInstance(manager, LocalSandboxManager)
+
+    def test_create_http_manager_explicit(self):
+        """Test creating HTTP manager explicitly."""
+        config = SandboxManagerConfig(base_url='http://localhost:8000')
+        manager = SandboxManagerFactory.create_manager(
+            manager_type=SandboxManagerType.HTTP,
+            config=config
+        )
+        self.assertIsInstance(manager, HttpSandboxManager)
+
+    def test_create_http_manager_implicit(self):
+        """Test creating HTTP manager implicitly (base_url in config)."""
+        config = SandboxManagerConfig(base_url='http://localhost:8000')
+        manager = SandboxManagerFactory.create_manager(config=config)
+        self.assertIsInstance(manager, HttpSandboxManager)
+
+    def test_create_http_manager_implicit_via_kwargs(self):
+        """Test creating HTTP manager implicitly (base_url in kwargs)."""
+        manager = SandboxManagerFactory.create_manager(base_url='http://localhost:8000')
+        self.assertIsInstance(manager, HttpSandboxManager)
+
+    def test_create_manager_with_config(self):
+        """Test creating manager with configuration."""
+        config = SandboxManagerConfig(cleanup_interval=600)
+        manager = SandboxManagerFactory.create_manager(
+            manager_type=SandboxManagerType.LOCAL,
+            config=config
+        )
+        self.assertEqual(manager.config.cleanup_interval, 600)
+
+    def test_create_invalid_manager_type(self):
+        """Test creating manager with invalid type."""
+        with self.assertRaises(ValueError) as context:
+            SandboxManagerFactory.create_manager(
+                manager_type='invalid_type'  # type: ignore
+            )
+        self.assertIn('not registered', str(context.exception))
+
+    def test_get_registered_types(self):
+        """Test getting list of registered types."""
+        types = SandboxManagerFactory.get_registered_types()
+        self.assertIsInstance(types, list)
+        self.assertGreater(len(types), 0)
 
 
 class TestLocalSandboxManager(unittest.IsolatedAsyncioTestCase):

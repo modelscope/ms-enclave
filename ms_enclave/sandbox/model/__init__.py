@@ -1,6 +1,6 @@
 """Data models for sandbox system."""
 
-from .base import ExecutionStatus, SandboxStatus, SandboxType, ToolType
+from .base import ExecutionStatus, SandboxManagerType, SandboxStatus, SandboxType, ToolType
 from .config import (
     DockerNotebookConfig,
     DockerSandboxConfig,

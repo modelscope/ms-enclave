@@ -8,12 +8,21 @@ from typing import Any, Dict, List, Optional, Union
 from ms_enclave.utils import get_logger
 
 from ..boxes import Sandbox, SandboxFactory
-from ..model import SandboxConfig, SandboxInfo, SandboxManagerConfig, SandboxStatus, SandboxType, ToolResult
-from .base import SandboxManager
+from ..model import (
+    SandboxConfig,
+    SandboxInfo,
+    SandboxManagerConfig,
+    SandboxManagerType,
+    SandboxStatus,
+    SandboxType,
+    ToolResult,
+)
+from .base import SandboxManager, register_manager
 
 logger = get_logger()
 
 
+@register_manager(SandboxManagerType.LOCAL)
 class LocalSandboxManager(SandboxManager):
     """Manager for sandbox environments."""
 

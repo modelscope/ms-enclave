@@ -5,7 +5,15 @@ from abc import ABC, abstractmethod
 from collections import deque
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Union
 
-from ..model import SandboxConfig, SandboxInfo, SandboxManagerConfig, SandboxStatus, SandboxType, ToolResult
+from ..model import (
+    SandboxConfig,
+    SandboxInfo,
+    SandboxManagerConfig,
+    SandboxManagerType,
+    SandboxStatus,
+    SandboxType,
+    ToolResult,
+)
 
 if TYPE_CHECKING:
     from ..boxes import Sandbox
@@ -205,3 +213,81 @@ class SandboxManager(ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.stop()
+
+
+class SandboxManagerFactory:
+    """Factory for creating sandbox managers."""
+
+    _registry: Dict[SandboxManagerType, type] = {}
+
+    @classmethod
+    def register(cls, manager_type: SandboxManagerType, manager_class: type) -> None:
+        """Register a sandbox manager class.
+
+        Args:
+            manager_type: Manager type to register
+            manager_class: Manager class to register
+        """
+        cls._registry[manager_type] = manager_class
+
+    @classmethod
+    def create_manager(
+        cls,
+        manager_type: Optional[SandboxManagerType] = None,
+        config: Optional[SandboxManagerConfig] = None,
+        **kwargs
+    ) -> SandboxManager:
+        """Create a sandbox manager instance.
+
+        Args:
+            manager_type: Type of manager to create
+            config: Manager configuration
+            **kwargs: Additional manager-specific parameters
+
+        Returns:
+            Sandbox manager instance
+
+        Raises:
+            ValueError: If manager type is not registered
+        """
+        if not manager_type:
+            api_url = config.base_url if config else kwargs.get('base_url')
+            if api_url:
+                manager_type = SandboxManagerType.HTTP
+            else:
+                manager_type = SandboxManagerType.LOCAL
+
+        if manager_type not in cls._registry:
+            raise ValueError(
+                f"Sandbox manager type '{manager_type}' not registered. "
+                f'Available types: {list(cls._registry.keys())}'
+            )
+
+        manager_class = cls._registry[manager_type]
+        return manager_class(config=config, **kwargs)
+
+    @classmethod
+    def get_registered_types(cls) -> List[SandboxManagerType]:
+        """Get list of registered manager types.
+
+        Returns:
+            List of registered manager types
+        """
+        return list(cls._registry.keys())
+
+
+def register_manager(manager_type: SandboxManagerType):
+    """Decorator to register a sandbox manager class.
+
+    Args:
+        manager_type: Manager type to register
+
+    Returns:
+        Decorator function
+    """
+
+    def decorator(manager_class: type) -> type:
+        SandboxManagerFactory.register(manager_type, manager_class)
+        return manager_class
+
+    return decorator

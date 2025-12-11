@@ -10,16 +10,18 @@ from ..model import (
     SandboxConfig,
     SandboxInfo,
     SandboxManagerConfig,
+    SandboxManagerType,
     SandboxStatus,
     SandboxType,
     ToolExecutionRequest,
     ToolResult,
 )
-from .base import SandboxManager
+from .base import SandboxManager, register_manager
 
 logger = get_logger()
 
 
+@register_manager(SandboxManagerType.HTTP)
 class HttpSandboxManager(SandboxManager):
     """HTTP-based sandbox manager for remote services.
     """

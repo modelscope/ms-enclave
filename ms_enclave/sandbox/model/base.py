@@ -61,6 +61,12 @@ class SandboxType(str, Enum):
         return required_type in compatible_types
 
 
+class SandboxManagerType(str, Enum):
+    """Sandbox manager type enumeration."""
+    LOCAL = 'local'
+    HTTP = 'http'
+
+
 class ToolType(str, Enum):
     """Tool type enumeration."""
     SANDBOX = 'sandbox'
