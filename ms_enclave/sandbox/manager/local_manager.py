@@ -255,6 +255,7 @@ class LocalSandboxManager(SandboxManager):
             'cleanup_interval': self._cleanup_interval,
             'pool_size': len(self._sandbox_pool),
             'pool_enabled': self.config.pool_size > 0,
+            'pool_initialized': self._pool_initialized,
         }
 
         return stats
@@ -344,6 +345,9 @@ class LocalSandboxManager(SandboxManager):
                 except Exception as e:
                     logger.error(f'Failed to create sandbox {i} for pool: {e}')
 
+            if created_ids:
+                self._pool_initialized = True
+
             logger.info(f'Pool initialized with {len(created_ids)} sandboxes')
             return created_ids
 
@@ -368,7 +372,7 @@ class LocalSandboxManager(SandboxManager):
             ValueError: If pool is empty or no sandbox available
             TimeoutError: If timeout waiting for available sandbox
         """
-        if not self._sandbox_pool:
+        if not self._pool_initialized:
             raise ValueError('Sandbox pool is empty, call initialize_pool first')
 
         if not self._pool_condition:

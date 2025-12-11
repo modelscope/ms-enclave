@@ -336,6 +336,11 @@ class HttpSandboxManager(SandboxManager):
                 except Exception as e:
                     logger.error(f'Error deleting sandbox {sandbox_id}: {e}')
 
+            # Clear the pool tracking
+            async with self._pool_lock:
+                self._sandbox_pool.clear()
+                self._pool_initialized = False
+
             logger.info(f'Cleaned up {deleted_count} sandboxes created by this manager')
 
         except Exception as e:
@@ -378,6 +383,7 @@ class HttpSandboxManager(SandboxManager):
                 'running': self._running,
                 'pool_size': len(self._sandbox_pool),
                 'pool_enabled': self.config.pool_size > 0,
+                'pool_initialized': self._pool_initialized,
             }
 
             # Combine server and local stats
@@ -432,6 +438,9 @@ class HttpSandboxManager(SandboxManager):
         Returns:
             List of created sandbox IDs
         """
+        if not self._session:
+            raise RuntimeError('Manager not started')
+
         pool_size = pool_size or self.config.pool_size
         if pool_size <= 0:
             logger.warning('Pool size is 0, pool not initialized')
@@ -440,39 +449,56 @@ class HttpSandboxManager(SandboxManager):
         config = config or self.config.sandbox_config
         sandbox_type = sandbox_type or SandboxType.DOCKER
 
-        async with self._pool_lock:
-            created_ids = []
-            logger.info(f'Initializing pool with {pool_size} sandboxes of type {sandbox_type} via HTTP API')
+        # Prepare request parameters
+        params = {}
+        if pool_size:
+            params['pool_size'] = pool_size
+        if sandbox_type:
+            params['sandbox_type'] = sandbox_type.value if isinstance(sandbox_type, SandboxType) else sandbox_type
 
-            for i in range(pool_size):
-                try:
-                    # Create sandbox via HTTP
-                    created_id = await self.create_sandbox(sandbox_type, config)
+        payload = None
+        if config:
+            if isinstance(config, SandboxConfig):
+                payload = config.model_dump(exclude_none=True)
+            elif isinstance(config, dict):
+                payload = config
 
-                    # Get sandbox info and update status to IDLE
-                    sandbox_info = await self.get_sandbox_info(created_id)
-                    if sandbox_info:
-                        sandbox_info.status = SandboxStatus.IDLE
-                        self._sandboxes[created_id] = sandbox_info
+        try:
+            # Match server's endpoint format: POST /pool/initialize
+            async with self._session.post(f'{self.base_url}/pool/initialize', params=params, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    sandbox_ids = data.get('sandbox_ids', [])
 
-                    # Add to pool
-                    self._sandbox_pool.append(created_id)
-                    created_ids.append(created_id)
+                    # Track the pool locally
+                    async with self._pool_lock:
+                        for sandbox_id in sandbox_ids:
+                            # Get sandbox info
+                            sandbox_info = await self.get_sandbox_info(sandbox_id)
+                            if sandbox_info:
+                                self._sandboxes[sandbox_id] = sandbox_info
+                                self._sandbox_pool.append(sandbox_id)
 
-                    logger.info(f'Added sandbox {created_id} to pool')
-                except Exception as e:
-                    logger.error(f'Failed to create sandbox {i} for pool: {e}')
+                        if sandbox_ids:
+                            self._pool_initialized = True
 
-            logger.info(f'Pool initialized with {len(created_ids)} sandboxes')
-            return created_ids
+                    logger.info(f'Initialized pool with {len(sandbox_ids)} sandboxes via HTTP API')
+                    return sandbox_ids
+                else:
+                    error_data = await response.json()
+                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+
+        except aiohttp.ClientError as e:
+            logger.error(f'HTTP client error initializing pool: {e}')
+            raise RuntimeError(f'Failed to initialize pool: {e}')
 
     async def execute_tool_in_pool(
         self, tool_name: str, parameters: Dict[str, Any], timeout: Optional[float] = None
     ) -> ToolResult:
         """Execute tool using an available sandbox from the pool via HTTP API.
 
-        Uses FIFO queue to get an idle sandbox, marks it as busy during execution,
-        then returns it to the pool as idle.
+        Delegates to the server's pool execution endpoint which handles queuing
+        and sandbox availability.
 
         Args:
             tool_name: Tool name to execute
@@ -486,44 +512,37 @@ class HttpSandboxManager(SandboxManager):
             ValueError: If pool is empty or no sandbox available
             TimeoutError: If timeout waiting for available sandbox
         """
-        import asyncio
+        if not self._session:
+            raise RuntimeError('Manager not started')
 
-        if not self._sandbox_pool:
+        if not self._pool_initialized:
             raise ValueError('Sandbox pool is empty, call initialize_pool first')
 
         timeout = timeout or self.config.timeout
-        start_time = asyncio.get_event_loop().time()
 
-        while True:
-            async with self._pool_lock:
-                # Try to get an idle sandbox from pool
-                for _ in range(len(self._sandbox_pool)):
-                    sandbox_id = self._sandbox_pool.popleft()
-                    sandbox_info = self._sandboxes.get(sandbox_id)
+        # Prepare request
+        params = {'tool_name': tool_name}
+        if timeout:
+            params['timeout'] = timeout
 
-                    if sandbox_info and sandbox_info.status == SandboxStatus.IDLE:
-                        # Mark as busy
-                        sandbox_info.status = SandboxStatus.BUSY
-                        logger.debug(f'Using sandbox {sandbox_id} from pool for tool {tool_name}')
+        payload = {'parameters': parameters}
 
-                        try:
-                            # Execute tool via HTTP
-                            result = await self.execute_tool(sandbox_id, tool_name, parameters)
-                            return result
-                        finally:
-                            # Return to pool and mark as idle
-                            async with self._pool_lock:
-                                sandbox_info.status = SandboxStatus.IDLE
-                                self._sandbox_pool.append(sandbox_id)
-                                logger.debug(f'Returned sandbox {sandbox_id} to pool')
-                    else:
-                        # Put back to end of queue
-                        self._sandbox_pool.append(sandbox_id)
+        try:
+            # Match server's endpoint format: POST /pool/execute
+            async with self._session.post(f'{self.base_url}/pool/execute', params=params, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return ToolResult.model_validate(data)
+                elif response.status == 400:
+                    error_data = await response.json()
+                    raise ValueError(error_data.get('detail', 'Pool execution failed'))
+                elif response.status == 408:
+                    error_data = await response.json()
+                    raise TimeoutError(error_data.get('detail', 'Timeout waiting for available sandbox'))
+                else:
+                    error_data = await response.json()
+                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
 
-            # Check timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed >= timeout:
-                raise TimeoutError(f'Timeout waiting for available sandbox from pool after {timeout}s')
-
-            # Wait a bit before retrying
-            await asyncio.sleep(0.1)
+        except aiohttp.ClientError as e:
+            logger.error(f'HTTP client error executing tool in pool: {e}')
+            raise RuntimeError(f'Failed to execute tool in pool: {e}')

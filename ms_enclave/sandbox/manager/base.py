@@ -25,6 +25,7 @@ class SandboxManager(ABC):
         self._sandboxes: Dict[str, 'Sandbox'] = {}
         self._sandbox_pool: Deque[str] = deque()
         self._pool_lock = asyncio.Lock()
+        self._pool_initialized = False
 
     @abstractmethod
     async def start(self) -> None:

@@ -37,6 +37,11 @@ class ToolResult(ExecutionResult):
     metadata: Dict[str, Any] = Field(default_factory=dict, description='Additional metadata')
     error: Optional[str] = Field(None, description='Error message if failed')
 
+    @property
+    def success(self) -> bool:
+        """Check if the tool execution was successful."""
+        return self.status == ExecutionStatus.SUCCESS
+
 
 class CommandResult(ExecutionResult):
     """Command execution result."""

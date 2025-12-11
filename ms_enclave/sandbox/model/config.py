@@ -13,7 +13,6 @@ class SandboxManagerConfig(BaseModel):
     api_key: Optional[str] = Field(None, description='API key for authentication')
     cleanup_interval: Optional[int] = Field(default=None, description='Cleanup interval in seconds')
     pool_size: int = Field(default=0, description='Sandbox pool size (0 = disabled)')
-    container_prefix_key: str = Field(default='sb', description='Sandbox ID prefix')
     sandbox_config: Optional[Union['SandboxConfig',
                                    Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
 
