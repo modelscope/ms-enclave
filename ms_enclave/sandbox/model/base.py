@@ -9,6 +9,8 @@ class SandboxStatus(str, Enum):
 
     INITIALIZING = 'initializing'
     RUNNING = 'running'
+    IDLE = 'idle'
+    BUSY = 'busy'
     STOPPING = 'stopping'
     STOPPED = 'stopped'
     ERROR = 'error'
@@ -57,6 +59,12 @@ class SandboxType(str, Enum):
         """
         compatible_types = cls.get_compatible_types(sandbox_type)
         return required_type in compatible_types
+
+
+class SandboxManagerType(str, Enum):
+    """Sandbox manager type enumeration."""
+    LOCAL = 'local'
+    HTTP = 'http'
 
 
 class ToolType(str, Enum):

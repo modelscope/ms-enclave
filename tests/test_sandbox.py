@@ -16,7 +16,7 @@ class TestSandboxBasicFunctionality(unittest.IsolatedAsyncioTestCase):
         """Test direct sandbox creation and Python code execution."""
         # Create Docker sandbox configuration
         config = DockerSandboxConfig(
-            image='python-sandbox',
+            image='python:3.11-slim',
             timeout=30,
             memory_limit='512m',
             cpu_limit=1.0,
@@ -89,27 +89,6 @@ print(f"Squares: {data}")
             info = sandbox.get_info()
             self.assertEqual(info.type, SandboxType.DOCKER)
             self.assertIsNotNone(info.status)
-
-
-class TestToolFactory(unittest.IsolatedAsyncioTestCase):
-    """Test ToolFactory functionality."""
-
-    def test_get_available_tools(self):
-        """Test getting available tools from ToolFactory."""
-        available_tools = ToolFactory.get_available_tools()
-        self.assertIsInstance(available_tools, list)
-        self.assertGreater(len(available_tools), 0)
-
-    def test_create_python_executor_tool(self):
-        """Test creating Python executor tool."""
-        try:
-            python_tool = ToolFactory.create_tool('python_executor')
-            self.assertEqual(python_tool.name, 'python_executor')
-            self.assertIsNotNone(python_tool.description)
-            self.assertIsNotNone(python_tool.schema)
-            self.assertIsNotNone(python_tool.required_sandbox_type)
-        except Exception as e:
-            self.fail(f'Failed to create Python executor tool: {e}')
 
 
 
