@@ -527,7 +527,7 @@ class HttpSandboxManager(SandboxManager):
         if timeout:
             params['timeout'] = timeout
 
-        payload = {'parameters': parameters}
+        payload = parameters
 
         try:
             # Match server's endpoint format: POST /pool/execute

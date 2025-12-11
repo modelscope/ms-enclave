@@ -4,8 +4,16 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from ms_enclave.sandbox.manager.http_manager import HttpSandboxManager
 from ms_enclave.sandbox.manager.local_manager import LocalSandboxManager
-from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxManagerConfig, SandboxStatus, SandboxType
+from ms_enclave.sandbox.model import (
+    DockerSandboxConfig,
+    SandboxInfo,
+    SandboxManagerConfig,
+    SandboxStatus,
+    SandboxType,
+    ToolResult,
+)
 
 
 class TestPoolInitialization(unittest.IsolatedAsyncioTestCase):
@@ -458,6 +466,158 @@ class TestPoolWithCleanup(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(result.success)
+
+
+class TestHttpPoolExecution(unittest.IsolatedAsyncioTestCase):
+    """Test HTTP manager pool execution.
+
+    Note: These tests require a running sandbox server at localhost:8000.
+    Start the server with: python -m ms_enclave.run_server
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Check if server is available."""
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('localhost', 8000))
+        sock.close()
+        if result != 0:
+            raise unittest.SkipTest('Server not running at localhost:8000')
+
+    def setUp(self):
+        """Set up test fixtures."""
+        config = SandboxManagerConfig(
+            pool_size=0,
+            cleanup_interval=60,
+            timeout=30.0,
+            base_url='http://localhost:8000'
+        )
+        self.manager = HttpSandboxManager(config)
+
+    async def asyncTearDown(self):
+        """Clean up after tests."""
+        if self.manager._running:
+            await self.manager.stop()
+
+    async def test_initialize_pool_via_http(self):
+        """Test pool initialization via HTTP API."""
+        await self.manager.start()
+
+        config = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+
+        sandbox_ids = await self.manager.initialize_pool(
+            pool_size=2,
+            sandbox_type=SandboxType.DOCKER,
+            config=config
+        )
+
+        self.assertEqual(len(sandbox_ids), 2)
+        self.assertEqual(len(self.manager._sandbox_pool), 2)
+        self.assertTrue(self.manager._pool_initialized)
+
+        # Cleanup
+        await self.manager.cleanup_all_sandboxes()
+
+    async def test_execute_tool_in_pool_via_http(self):
+        """Test tool execution in pool via HTTP API."""
+        await self.manager.start()
+
+        config = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+
+        await self.manager.initialize_pool(
+            pool_size=1,
+            sandbox_type=SandboxType.DOCKER,
+            config=config
+        )
+
+        result = await self.manager.execute_tool_in_pool(
+            'python_executor',
+            {'code': 'print("hello from http pool")', 'timeout': 30}
+        )
+
+        self.assertTrue(result.success)
+        self.assertIn('hello from http pool', result.output)
+
+        # Cleanup
+        await self.manager.cleanup_all_sandboxes()
+
+    async def test_execute_tool_in_empty_pool_via_http(self):
+        """Test execution fails when pool not initialized."""
+        await self.manager.start()
+
+        with self.assertRaises(ValueError) as context:
+            await self.manager.execute_tool_in_pool(
+                'python_executor',
+                {'code': 'print("test")'}
+            )
+
+        self.assertIn('pool is empty', str(context.exception))
+
+    async def test_concurrent_pool_execution_via_http(self):
+        """Test concurrent execution via HTTP pool."""
+        await self.manager.start()
+
+        config = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+
+        await self.manager.initialize_pool(
+            pool_size=2,
+            sandbox_type=SandboxType.DOCKER,
+            config=config
+        )
+
+        # Execute concurrent requests
+        tasks = [
+            self.manager.execute_tool_in_pool(
+                'python_executor',
+                {'code': f'print("task {i}")', 'timeout': 30}
+            )
+            for i in range(3)
+        ]
+        results = await asyncio.gather(*tasks)
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(r.success for r in results))
+
+        # Cleanup
+        await self.manager.cleanup_all_sandboxes()
+
+    async def test_pool_execution_with_error(self):
+        """Test error handling in pool execution."""
+        await self.manager.start()
+
+        config = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+
+        await self.manager.initialize_pool(
+            pool_size=1,
+            sandbox_type=SandboxType.DOCKER,
+            config=config
+        )
+
+        # Execute code that raises error
+        result = await self.manager.execute_tool_in_pool(
+            'python_executor',
+            {'code': 'raise ValueError("test error")', 'timeout': 30}
+        )
+
+        # Should have error but complete
+        self.assertFalse(result.success)
+        self.assertIsNotNone(result.error)
+
+        # Cleanup
+        await self.manager.cleanup_all_sandboxes()
 
 
 if __name__ == '__main__':
