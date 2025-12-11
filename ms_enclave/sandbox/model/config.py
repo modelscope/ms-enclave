@@ -17,14 +17,14 @@ class SandboxManagerConfig(BaseModel):
                                    Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
 
     @field_validator('pool_size')
-    def validate_pool_size(cls, v):
+    def validate_pool_size(self, v):
         """Validate pool size."""
         if v < 0:
             raise ValueError('Pool size must be non-negative')
         return v
 
     @field_validator('cleanup_interval')
-    def validate_cleanup_interval(cls, v):
+    def validate_cleanup_interval(self, v):
         """Validate cleanup interval."""
         if v <= 0:
             raise ValueError('Cleanup interval must be positive')
