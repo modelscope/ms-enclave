@@ -1,9 +1,11 @@
 """Base sandbox manager interface."""
 
+import asyncio
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from collections import deque
+from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Union
 
-from ..model import SandboxConfig, SandboxInfo, SandboxStatus, SandboxType, ToolResult
+from ..model import SandboxConfig, SandboxInfo, SandboxManagerConfig, SandboxStatus, SandboxType, ToolResult
 
 if TYPE_CHECKING:
     from ..boxes import Sandbox
@@ -12,10 +14,17 @@ if TYPE_CHECKING:
 class SandboxManager(ABC):
     """Abstract base class for sandbox managers."""
 
-    def __init__(self):
-        """Initialize the sandbox manager."""
+    def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
+        """Initialize the sandbox manager.
+
+        Args:
+            config: Sandbox manager configuration
+        """
+        self.config = config or SandboxManagerConfig()
         self._running = False
         self._sandboxes: Dict[str, 'Sandbox'] = {}
+        self._sandbox_pool: Deque[str] = deque()
+        self._pool_lock = asyncio.Lock()
 
     @abstractmethod
     async def start(self) -> None:
@@ -142,6 +151,48 @@ class SandboxManager(ABC):
     @abstractmethod
     async def cleanup_all_sandboxes(self) -> None:
         """Clean up all sandboxes."""
+        pass
+
+    @abstractmethod
+    async def initialize_pool(
+        self,
+        pool_size: Optional[int] = None,
+        sandbox_type: Optional[SandboxType] = None,
+        config: Optional[Union[SandboxConfig, Dict]] = None
+    ) -> List[str]:
+        """Initialize sandbox pool.
+
+        Args:
+            pool_size: Number of sandboxes in pool (uses config if not provided)
+            sandbox_type: Type of sandbox to create
+            config: Sandbox configuration (uses config.sandbox_config if not provided)
+
+        Returns:
+            List of created sandbox IDs
+        """
+        pass
+
+    @abstractmethod
+    async def execute_tool_in_pool(
+        self, tool_name: str, parameters: Dict[str, Any], timeout: Optional[float] = None
+    ) -> ToolResult:
+        """Execute tool using an available sandbox from the pool.
+
+        Uses FIFO queue to get an idle sandbox, marks it as busy during execution,
+        then returns it to the pool as idle.
+
+        Args:
+            tool_name: Tool name to execute
+            parameters: Tool parameters
+            timeout: Optional timeout for waiting for available sandbox
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            ValueError: If pool is empty or no sandbox available
+            TimeoutError: If timeout waiting for available sandbox
+        """
         pass
 
     # Context manager support

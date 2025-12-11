@@ -7,6 +7,7 @@ from .config import (
     FileOperationConfig,
     PythonExecutorConfig,
     SandboxConfig,
+    SandboxManagerConfig,
     ShellExecutorConfig,
     ToolConfig,
 )

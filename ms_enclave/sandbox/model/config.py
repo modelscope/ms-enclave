@@ -5,6 +5,33 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class SandboxManagerConfig(BaseModel):
+    """Sandbox manager configuration."""
+
+    base_url: Optional[str] = Field(None, description='Base URL for HTTP manager')
+    timeout: Optional[int] = Field(default=None, description='Request timeout in seconds')
+    api_key: Optional[str] = Field(None, description='API key for authentication')
+    cleanup_interval: Optional[int] = Field(default=None, description='Cleanup interval in seconds')
+    pool_size: int = Field(default=0, description='Sandbox pool size (0 = disabled)')
+    container_prefix_key: str = Field(default='sb', description='Sandbox ID prefix')
+    sandbox_config: Optional[Union['SandboxConfig',
+                                   Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
+
+    @field_validator('pool_size')
+    def validate_pool_size(cls, v):
+        """Validate pool size."""
+        if v < 0:
+            raise ValueError('Pool size must be non-negative')
+        return v
+
+    @field_validator('cleanup_interval')
+    def validate_cleanup_interval(cls, v):
+        """Validate cleanup interval."""
+        if v <= 0:
+            raise ValueError('Cleanup interval must be positive')
+        return v
+
+
 class SandboxConfig(BaseModel):
     """Base sandbox configuration."""
 

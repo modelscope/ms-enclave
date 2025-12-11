@@ -9,6 +9,8 @@ class SandboxStatus(str, Enum):
 
     INITIALIZING = 'initializing'
     RUNNING = 'running'
+    IDLE = 'idle'
+    BUSY = 'busy'
     STOPPING = 'stopping'
     STOPPED = 'stopped'
     ERROR = 'error'

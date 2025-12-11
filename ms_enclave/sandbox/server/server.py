@@ -14,6 +14,7 @@ from ..model import (
     HealthCheckResult,
     SandboxConfig,
     SandboxInfo,
+    SandboxManagerConfig,
     SandboxStatus,
     SandboxType,
     ToolExecutionRequest,
@@ -25,15 +26,15 @@ class SandboxServer:
     """FastAPI-based sandbox server.
     """
 
-    def __init__(self, cleanup_interval: int = 300, api_key: Optional[str] = None):
+    def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         """Initialize sandbox server.
 
         Args:
             cleanup_interval: Cleanup interval in seconds
             api_key: Optional API key to protect endpoints. If None, auth is disabled.
         """
-        self.manager = LocalSandboxManager(cleanup_interval)
-        self.api_key: Optional[str] = api_key
+        self.manager = LocalSandboxManager(config=config, **kwargs)
+        self.api_key: Optional[str] = config.api_key if config else kwargs.get('api_key')
         self.app = FastAPI(
             title='Sandbox API',
             description='Agent sandbox execution environment',
@@ -182,7 +183,7 @@ class SandboxServer:
 
 
 # Create a default server instance
-def create_server(cleanup_interval: int = 300, api_key: Optional[str] = None) -> SandboxServer:
+def create_server(config: Optional[SandboxManagerConfig] = None, **kwargs) -> SandboxServer:
     """Create a sandbox server instance.
 
     Args:
@@ -192,4 +193,4 @@ def create_server(cleanup_interval: int = 300, api_key: Optional[str] = None) ->
     Returns:
         Sandbox server instance
     """
-    return SandboxServer(cleanup_interval, api_key)
+    return SandboxServer(config=config, **kwargs)
