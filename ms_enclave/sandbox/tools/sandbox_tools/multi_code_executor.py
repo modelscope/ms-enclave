@@ -230,7 +230,6 @@ class MultiCodeExecutor(SandboxTool):
         probe_cmd = (
             '/bin/sh -lc "'
             'if [ -x /root/miniconda3/bin/conda ]; then '
-
             '  . /root/miniconda3/bin/activate sandbox-runtime >/dev/null 2>&1 || true; '
             '  which python || echo /root/miniconda3/bin/python; '
             'else '
