@@ -17,7 +17,7 @@ class SandboxManagerConfig(BaseModel):
                                    Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
 
     @field_validator('pool_size')
-    def validate_pool_size(self, v):
+    def validate_pool_size(cls, v):
         """Validate pool size."""
         if v < 0:
             raise ValueError('Pool size must be non-negative')
