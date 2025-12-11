@@ -9,7 +9,7 @@ class SandboxConfig(BaseModel):
     """Base sandbox configuration."""
 
     timeout: int = Field(default=30, description='Default timeout in seconds')
-    tools_config: Union[List, Dict[str, Dict[
+    tools_config: Union[List[str], Dict[str, Dict[
         str, Any]]] = Field(default_factory=dict, description='Configuration for tools within the sandbox')
     working_dir: str = Field(default='/sandbox', description='Default working directory')
     env_vars: Dict[str, str] = Field(default_factory=dict, description='Environment variables')
@@ -17,7 +17,10 @@ class SandboxConfig(BaseModel):
 
     @model_validator(mode='after')
     def _normalize_tools_config(self) -> 'SandboxConfig':
-        """Ensure tools_config is a dict; if provided as a List, reset to empty dict post init."""
+        """
+        Ensure tools_config is a dict. If provided as a List, convert each list element
+        to a key in the dict with an empty dict as its value (e.g., ['tool1', 'tool2'] -> {'tool1': {}, 'tool2': {}}).
+        """
         if isinstance(self.tools_config, list):
             self.tools_config = {_tool: {} for _tool in self.tools_config}
         return self

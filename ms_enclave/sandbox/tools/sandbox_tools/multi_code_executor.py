@@ -39,7 +39,7 @@ class MultiCodeExecutor(SandboxTool):
                 'additionalProperties': {
                     'type': 'string'
                 },
-                'description': 'Optional additional files to restore before execution (filename -> content)'
+                'description': 'Optional additional files to write before execution (filename -> content)'
             },
             'compile_timeout': {
                 'type': 'integer',
@@ -230,7 +230,7 @@ class MultiCodeExecutor(SandboxTool):
         probe_cmd = (
             '/bin/sh -lc "'
             'if [ -x /root/miniconda3/bin/conda ]; then '
-            '  # Try activation; ignore errors to keep logs clean\n'
+
             '  . /root/miniconda3/bin/activate sandbox-runtime >/dev/null 2>&1 || true; '
             '  which python || echo /root/miniconda3/bin/python; '
             'else '
