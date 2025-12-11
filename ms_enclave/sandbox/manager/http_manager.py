@@ -35,7 +35,8 @@ class HttpSandboxManager(SandboxManager):
         super().__init__(config, **kwargs)
 
         self.base_url = self.config.base_url or kwargs.get('base_url')
-        assert self.base_url, 'base_url must be provided for HttpSandboxManager'
+        if not self.base_url:
+            raise ValueError('base_url must be provided for HttpSandboxManager')
 
         self.timeout = aiohttp.ClientTimeout(total=self.config.timeout or kwargs.get('timeout'))
         self.api_key = self.config.api_key or kwargs.get('api_key')
