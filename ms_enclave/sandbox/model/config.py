@@ -23,11 +23,13 @@ class SandboxManagerConfig(BaseModel):
             raise ValueError('Pool size must be non-negative')
         return v
 
-    @field_validator('cleanup_interval')
-    def validate_cleanup_interval(self, v):
-        """Validate cleanup interval."""
-        if v <= 0:
-            raise ValueError('Cleanup interval must be positive')
+    @field_validator('cleanup_interval', mode='after')
+    def validate_cleanup_interval(cls, v):
+        """Validate cleanup interval.
+        None is allowed (means no cleanup interval). Otherwise, must be positive.
+        """
+        if v is not None and v <= 0:
+            raise ValueError('Cleanup interval must be positive or None')
         return v
 
 
