@@ -20,7 +20,7 @@ class MultiCodeExecutor(SandboxTool):
 
     _name = 'multi_code_executor'
     _sandbox_type = SandboxType.DOCKER
-    _description = 'Execute code in various languages (python, cpp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket) with runtime tuning'  # noqa: E501
+    _description = 'Execute code in various languages (python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket) with runtime tuning'  # noqa: E501
     _parameters = ToolParams(
         type='object',
         properties={
@@ -28,7 +28,7 @@ class MultiCodeExecutor(SandboxTool):
                 'type':
                 'string',
                 'description':
-                'Language to execute (python, cpp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket)'  # noqa: E501
+                'Language to execute (python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket)'  # noqa: E501
             },
             'code': {
                 'type': 'string',
@@ -91,6 +91,8 @@ class MultiCodeExecutor(SandboxTool):
 
     # Languages that benefit from a tuned Python PATH prefix
     LANGS_REQUIRE_PY_ENV = {'python', 'pytest'}
+    # Include all jars under /root/sandbox/runtime/java and the current dir in the classpath
+    JAVA_RUNTIME_CP: str = '/root/sandbox/runtime/java/*:.'
 
     async def execute(
         self,
@@ -287,9 +289,7 @@ class MultiCodeExecutor(SandboxTool):
         """Run language-specific pre-build setup. Return ToolResult on error, else None."""
         if lang != 'csharp':
             return None
-        init_res = await self._exec_in_dir(
-            sandbox_context, workdir, 'dotnet new console -n app -o .', timeout=compile_timeout
-        )
+        init_res = await self._exec_in_dir(sandbox_context, workdir, 'dotnet new console -o .', timeout=compile_timeout)
         if init_res.exit_code != 0:
             return ToolResult(
                 tool_name=self.name,
@@ -324,15 +324,16 @@ class MultiCodeExecutor(SandboxTool):
             'cpp':
             lambda: self._cpp_commands(main_filename),
             'csharp':
-            lambda: (None, 'dotnet run'),
+            lambda: (None, 'dotnet run --project .'),
             'go':
             lambda: (f'go build -o app {main_filename}', './app'),
             'go_test':
-            lambda: (None, f'go test {main_filename}'),
+            lambda: (None, f'go mod init {main_filename} && go test {main_filename}'),
             'java':
-            lambda: (f'javac {main_filename}', 'java -ea Main'),
+            lambda:
+            (f'javac -cp "{self.JAVA_RUNTIME_CP}" {main_filename}', f'java -ea -cp "{self.JAVA_RUNTIME_CP}" Main'),
             'junit':
-            lambda: ('javac *.java', 'java -ea Main'),
+            lambda: (f'javac -cp "{self.JAVA_RUNTIME_CP}" *.java', f'java -ea -cp "{self.JAVA_RUNTIME_CP}" Main'),
             'nodejs':
             lambda: (None, f'node {main_filename}'),
             'js':
