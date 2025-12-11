@@ -202,6 +202,7 @@ asyncio.run(main())
     - python_executor（执行 Python 代码）
     - shell_executor（执行 Shell 命令）
     - file_operation（读/写/删/列 文件）
+    - multi_code_executor（多语言代码执行，支持 python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket）需要指定镜像 `volcengine/sandbox-fusion:server-20250609`
   - 特性：可配置内存/CPU 限制、卷挂载、网络开关、特权模式、端口映射
 
 - DOCKER_NOTEBOOK（Jupyter Kernel Gateway 环境）
@@ -294,8 +295,8 @@ git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 
 # 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+conda create -n ms-enclave python=3.10 -y
+conda activate ms-enclave
 
 # 安装依赖
 pip install -e ".[dev]"
@@ -308,16 +309,6 @@ python examples/sandbox_usage_examples.py
 python examples/local_manager_example.py
 python examples/server_manager_example.py
 ```
-
----
-
-## 可用工具一览
-
-- `python_executor`：执行 Python 代码（DOCKER）
-- `shell_executor`：执行 Shell 命令（DOCKER）
-- `file_operation`：读/写/删/列 文件（DOCKER）
-- `notebook_executor`：在 Jupyter Kernel 中执行（DOCKER_NOTEBOOK）
-- 你也可以通过 Tool 工厂（`@register_tool`）注册自定义工具
 
 ---
 

@@ -15,13 +15,13 @@
 <a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
 <p>
 
-## Overview
+## Introduction
 
-ms-enclave is a modular and stable agent sandbox runtime environment that provides a secure isolated execution environment for applications. It achieves strong isolation through Docker containers, with accompanying local/HTTP managers and an extensible tool system, enabling you to safely and efficiently execute code in a controlled environment.
+ms-enclave is a modular and stable sandbox runtime environment that provides a secure isolated execution environment for applications. It implements strong isolation through Docker containers, equipped with local/HTTP managers and an extensible tool system, helping you execute code safely and efficiently in a controlled environment.
 
-- 🔒 Secure Isolation: Full isolation and resource limitation based on Docker
-- 🧩 Modular: Extensible sandbox and tools (registration factory)
-- ⚡ Stable Performance: Simple implementation, fast startup, lifecycle management
+- 🔒 Secure Isolation: Complete isolation and resource limits based on Docker
+- 🧩 Modular: Both sandboxes and tools are extensible (registered factory)
+- ⚡ Stable Performance: Clean implementation, fast startup, with lifecycle management
 - 🌐 Remote Management: Built-in FastAPI service, supports HTTP management
 - 🔧 Tool System: Standardized tools enabled by sandbox type (OpenAI-style schema)
 
@@ -29,7 +29,7 @@ ms-enclave is a modular and stable agent sandbox runtime environment that provid
 
 - Python >= 3.10
 - Operating System: Linux, macOS, or Windows with Docker support
-- Docker daemon running locally (Notebook sandbox requires port 8888 open)
+- Docker daemon available on local machine (Notebook sandbox requires port 8888 open)
 
 ## Installation
 
@@ -51,9 +51,9 @@ pip install -e .
 pip install -e '.[docker]'
 ```
 
-## Quick Start: Minimal Example (SandboxFactory)
+## Quick Start: Minimal Viable Example (SandboxFactory)
 
-> Tools need to be explicitly enabled in the tools_config setting, otherwise they won't be registered.
+> Tools need to be explicitly enabled in the configured tools_config, otherwise they won't be registered.
 
 ```python
 import asyncio
@@ -72,7 +72,7 @@ async def main():
     )
 
     async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
-        # 1) Write a file
+        # 1) Write file
         await sandbox.execute_tool('file_operation', {
             'operation': 'write', 'file_path': '/sandbox/hello.txt', 'content': 'hi from enclave'
         })
@@ -87,20 +87,20 @@ asyncio.run(main())
 
 ---
 
-## Typical Usage Scenarios and Examples
+## Typical Usage Patterns & Examples
 
-- Directly using SandboxFactory: Create/destroy sandboxes in a single process—lightweight; suitable for scripts or one-off tasks
-- Using LocalSandboxManager: Manage the lifecycle/cleanup of multiple sandboxes locally; suitable for service-oriented or multi-task parallel scenarios
-- Using HttpSandboxManager: Unified sandbox management through remote HTTP services; suitable for cross-machine/distributed or more isolated deployments
+- Direct use of SandboxFactory: Create/destroy sandboxes within a single process, most lightweight; suitable for scripts or one-time tasks
+- Using LocalSandboxManager: Uniformly orchestrate lifecycle/cleanup of multiple sandboxes on local machine; suitable for service-oriented, multi-task parallel scenarios
+- Using HttpSandboxManager: Manage sandboxes uniformly through remote HTTP service; suitable for cross-machine/distributed or stronger isolation deployments
 
 ### 1) Direct Sandbox Creation: SandboxFactory (Lightweight, Temporary)
 
-Usage Scenarios:
+Use Cases:
 
-- Temporarily execute code in scripts or microservices
-- Fine-grained control over sandbox lifecycle (cleanup upon context exit)
+- Temporarily run a piece of code in scripts or microservices
+- Fine-grained control over sandbox lifecycle (cleanup on context exit)
 
-Example (Docker Sandbox + Python Execution):
+Example (Docker sandbox + Python execution):
 
 ```python
 import asyncio
@@ -120,12 +120,12 @@ async def main():
 asyncio.run(main())
 ```
 
-### 2) Local Unified Management: LocalSandboxManager (Multi-Sandbox, Lifecycle Management)
+### 2) Local Unified Orchestration: LocalSandboxManager (Multiple Sandboxes, Lifecycle Management)
 
-Usage Scenarios:
+Use Cases:
 
-- Create/manage multiple sandboxes within the same process (creation, query, stop, periodic cleanup)
-- Unified view for monitoring stats and health
+- Need to create/manage multiple sandboxes within the same process (create, query, stop, periodic cleanup)
+- Want unified status view, statistics, and health checks
 
 Example:
 
@@ -154,24 +154,24 @@ async def main():
 asyncio.run(main())
 ```
 
-### 3) Remote Unified Management: HttpSandboxManager (Cross-Machine/Isolated Deployment)
+### 3) Remote Unified Management: HttpSandboxManager (Cross-machine/Isolated Deployment)
 
-Usage Scenarios:
+Use Cases:
 
-- Run sandbox services on dedicated hosts/containers, invoke remotely via HTTP
-- Share a secure controlled sandbox cluster among multiple applications
+- Run sandbox service on a separate host/container, invoke remotely via HTTP
+- Multiple applications share a secure controlled sandbox cluster
 
-Start the service (choose one):
+Start the service first (choose one):
 
 ```bash
-# Option A: Command line
+# Method A: Command line
 ms-enclave server --host 0.0.0.0 --port 8000
 
-# Option B: Python script
+# Method B: Python startup
 python -c "from ms_enclave.sandbox import create_server; create_server().run(host='0.0.0.0', port=8000)"
 ```
 
-Client Example:
+Client example:
 
 ```python
 import asyncio
@@ -191,27 +191,28 @@ asyncio.run(main())
 
 ---
 
-## Sandbox Types and Tool Support
+## Sandbox Types & Tool Support
 
-Currently Supported Sandbox Types:
+Current built-in sandbox types:
 
-- DOCKER (General-purpose container execution)
+- DOCKER (General container execution)
   - Supported tools:
-    - python_executor (execute Python code)
-    - shell_executor (execute Shell commands)
-    - file_operation (read/write/delete/list files)
-  - Features: Configurable memory/CPU limits, volume mounts, network toggling, privileged mode, port mapping
+    - python_executor (Execute Python code)
+    - shell_executor (Execute Shell commands)
+    - file_operation (Read/write/delete/list files)
+    - multi_code_executor (Multi-language code execution, supports python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket) Requires specifying image `volcengine/sandbox-fusion:server-20250609`
+  - Features: Configurable memory/CPU limits, volume mounts, network toggle, privileged mode, port mapping
 
 - DOCKER_NOTEBOOK (Jupyter Kernel Gateway environment)
   - Supported tools:
-    - notebook_executor (execute code via Jupyter Kernel, supports context saving)
-  - Note: This type only loads notebook_executor; other DOCKER-specific tools won't be enabled in this sandbox.
-  - Dependencies: Requires port 8888 exposed and network enabled
+    - notebook_executor (Execute code through Jupyter kernel, supports saving code context)
+  - Note: This type only loads notebook_executor; other DOCKER-specific tools won't be enabled in this sandbox
+  - Dependencies: Requires port 8888 exposed, network enabled
 
-Tool Loading Rules:
+Tool loading rules:
 
-- Tools are initialized and made available only when explicitly declared in `tools_config`.
-- Tools validate `required_sandbox_type`; unmatched types will be ignored automatically.
+- Tools are only initialized and available when explicitly declared in `tools_config`
+- Tools validate `required_sandbox_type`, automatically ignored if mismatched
 
 Example:
 
@@ -225,15 +226,14 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 ## Common Configuration Options
 
 - `image`: Docker image name (e.g., `python:3.11-slim` or `jupyter-kernel-gateway`)
-- `memory_limit`: Memory limit (e.g., `512m` / `1g`)
-- `cpu_limit`: CPU limit (float > 0)
-- `volumes`: Volume mounts, e.g., `{host_path: {"bind": "/container/path", "mode": "rw"}}`
-- `ports`: Port mappings, e.g., `{ "8888/tcp": ("127.0.0.1", 8888) }`
-- `network_enabled`: Enable network (Notebook sandbox requires True)
-- `remove_on_exit`: Automatically remove container on exit (default True)
+- `memory_limit`: Memory limit (e.g., `512m`/`1g`)
+- `cpu_limit`: CPU limit (float, >0)
+- `volumes`: Volume mounts, formatted as `{host_path: {"bind": "/container/path", "mode": "rw"}}`
+- `ports`: Port mapping, formatted as `{ "8888/tcp": ("127.0.0.1", 8888) }`
+- `network_enabled`: Whether to enable network (Notebook sandbox requires True)
+- `remove_on_exit`: Whether to delete container on exit (default True)
 
 **Example of Installing Additional Dependencies in Sandbox**
-
 ```python
 async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
     # 1) Write a file
@@ -252,8 +252,7 @@ async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
     print(result_cli.stdout, flush=True)
 ```
 
-**Example of Reading and Writing Host Files in Sandbox**
-
+**Example of Reading/Writing Host Files in Sandbox**
 ```python
 async with LocalSandboxManager() as manager:
     # Create sandbox
@@ -271,30 +270,31 @@ async with LocalSandboxManager() as manager:
     )
     print(result.model_dump())
 ```
+
 ---
 
-## Error Handling and Debugging
+## Error Handling & Debugging
 
 ```python
 result = await sandbox.execute_tool('python_executor', {'code': 'print(1/0)'})
 if result.error:
-    print('Error:', result.error)
+    print('Error message:', result.error)
 else:
     print('Output:', result.output)
 ```
 
 ---
 
-## Development and Testing
+## Development & Testing
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 
-# Setup virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# Create virtual environment
+conda create -n ms-enclave python=3.10 -y
+conda activate ms-enclave
 
 # Install dependencies
 pip install -e ".[dev]"
@@ -302,7 +302,7 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
-# Run examples (provided in the repository)
+# Run examples (provided in repository)
 python examples/sandbox_usage_examples.py
 python examples/local_manager_example.py
 python examples/server_manager_example.py
@@ -310,29 +310,19 @@ python examples/server_manager_example.py
 
 ---
 
-## Available Tools
-
-- `python_executor`: Execute Python code (DOCKER)
-- `shell_executor`: Execute Shell commands (DOCKER)
-- `file_operation`: Read/Write/Delete/List files (DOCKER)
-- `notebook_executor`: Execute via Jupyter Kernel (DOCKER_NOTEBOOK)
-- You can also register custom tools via the Tool factory (`@register_tool`).
-
----
-
-## Contribution
+## Contributing
 
 We welcome contributions! Please check [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
-### Steps to Contribute
+### Contribution Steps
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Develop and add tests
-4. Run local tests: `pytest`
+4. Run tests locally: `pytest`
 5. Commit changes: `git commit -m 'Add amazing feature'`
-6. Push the branch: `git push origin feature/amazing-feature`
-7. Submit a Pull Request
+6. Push branch: `git push origin feature/amazing-feature`
+7. Submit Pull Request
 
 ## License
 
