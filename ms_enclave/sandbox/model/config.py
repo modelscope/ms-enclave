@@ -2,18 +2,56 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class SandboxManagerConfig(BaseModel):
+    """Sandbox manager configuration."""
+
+    base_url: Optional[str] = Field(None, description='Base URL for HTTP manager')
+    timeout: Optional[int] = Field(default=None, description='Request timeout in seconds')
+    api_key: Optional[str] = Field(None, description='API key for authentication')
+    cleanup_interval: Optional[int] = Field(default=None, description='Cleanup interval in seconds')
+    pool_size: int = Field(default=0, description='Sandbox pool size (0 = disabled)')
+    sandbox_config: Optional[Union['SandboxConfig',
+                                   Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
+
+    @field_validator('pool_size')
+    def validate_pool_size(cls, v):
+        """Validate pool size."""
+        if v < 0:
+            raise ValueError('Pool size must be non-negative')
+        return v
+
+    @field_validator('cleanup_interval', mode='after')
+    def validate_cleanup_interval(cls, v):
+        """Validate cleanup interval.
+        None is allowed (means no cleanup interval). Otherwise, must be positive.
+        """
+        if v is not None and v <= 0:
+            raise ValueError('Cleanup interval must be positive or None')
+        return v
 
 
 class SandboxConfig(BaseModel):
     """Base sandbox configuration."""
 
     timeout: int = Field(default=30, description='Default timeout in seconds')
-    tools_config: Dict[str, Dict[
-        str, Any]] = Field(default_factory=dict, description='Configuration for tools within the sandbox')
+    tools_config: Union[List[str], Dict[str, Dict[
+        str, Any]]] = Field(default_factory=dict, description='Configuration for tools within the sandbox')
     working_dir: str = Field(default='/sandbox', description='Default working directory')
     env_vars: Dict[str, str] = Field(default_factory=dict, description='Environment variables')
     resource_limits: Dict[str, Any] = Field(default_factory=dict, description='Resource limits')
+
+    @model_validator(mode='after')
+    def _normalize_tools_config(self) -> 'SandboxConfig':
+        """
+        Ensure tools_config is a dict. If provided as a List, convert each list element
+        to a key in the dict with an empty dict as its value (e.g., ['tool1', 'tool2'] -> {'tool1': {}, 'tool2': {}}).
+        """
+        if isinstance(self.tools_config, list):
+            self.tools_config = {_tool: {} for _tool in self.tools_config}
+        return self
 
 
 class DockerSandboxConfig(SandboxConfig):

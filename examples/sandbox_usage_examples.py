@@ -13,7 +13,7 @@ async def direct_sandbox_example():
 
     # Create Docker sandbox configuration
     config = DockerSandboxConfig(
-        image='python-sandbox',
+        image='python:3.11-slim',
         timeout=30,
         memory_limit='512m',
         cpu_limit=1.0,

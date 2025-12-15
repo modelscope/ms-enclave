@@ -1,32 +1,41 @@
 """Sandbox environment manager."""
 
 import asyncio
-import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 from ms_enclave.utils import get_logger
 
 from ..boxes import Sandbox, SandboxFactory
-from ..model import SandboxConfig, SandboxInfo, SandboxStatus, SandboxType, ToolResult
-from .base import SandboxManager
+from ..model import (
+    SandboxConfig,
+    SandboxInfo,
+    SandboxManagerConfig,
+    SandboxManagerType,
+    SandboxStatus,
+    SandboxType,
+    ToolResult,
+)
+from .base import SandboxManager, register_manager
 
 logger = get_logger()
 
 
+@register_manager(SandboxManagerType.LOCAL)
 class LocalSandboxManager(SandboxManager):
     """Manager for sandbox environments."""
 
-    def __init__(self, cleanup_interval: int = 300):  # 5 minutes
+    def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         """Initialize sandbox manager.
 
         Args:
-            cleanup_interval: Interval between cleanup runs in seconds
+            config: Sandbox manager configuration
         """
-        super().__init__()
-        self._cleanup_interval = cleanup_interval
+        super().__init__(config, **kwargs)
+        self._cleanup_interval = self.config.cleanup_interval or kwargs.get('cleanup_interval', 300)
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._pool_condition: Optional[asyncio.Condition] = None
 
     async def start(self) -> None:
         """Start the sandbox manager."""
@@ -34,6 +43,7 @@ class LocalSandboxManager(SandboxManager):
             return
 
         self._running = True
+        self._pool_condition = asyncio.Condition()
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         logger.info('Local sandbox manager started')
 
@@ -252,6 +262,9 @@ class LocalSandboxManager(SandboxManager):
             'sandbox_types': dict(type_counter),
             'running': self._running,
             'cleanup_interval': self._cleanup_interval,
+            'pool_size': len(self._sandbox_pool),
+            'pool_enabled': self.config.pool_size > 0,
+            'pool_initialized': self._pool_initialized,
         }
 
         return stats
@@ -293,3 +306,137 @@ class LocalSandboxManager(SandboxManager):
                 await self.delete_sandbox(sandbox_id)
             except Exception as e:
                 logger.error(f'Error cleaning up expired sandbox {sandbox_id}: {e}')
+
+    async def initialize_pool(
+        self,
+        pool_size: Optional[int] = None,
+        sandbox_type: Optional[SandboxType] = None,
+        config: Optional[Union[SandboxConfig, Dict]] = None
+    ) -> List[str]:
+        """Initialize sandbox pool.
+
+        Args:
+            pool_size: Number of sandboxes in pool (uses config if not provided)
+            sandbox_type: Type of sandbox to create
+            config: Sandbox configuration (uses config.sandbox_config if not provided)
+
+        Returns:
+            List of created sandbox IDs
+        """
+        pool_size = pool_size or self.config.pool_size
+        if pool_size <= 0:
+            logger.warning('Pool size is 0, pool not initialized')
+            return []
+
+        config = config or self.config.sandbox_config
+        sandbox_type = sandbox_type or SandboxType.DOCKER
+
+        async with self._pool_lock:
+            created_ids = []
+            logger.info(f'Initializing pool with {pool_size} sandboxes of type {sandbox_type}')
+
+            for i in range(pool_size):
+                try:
+                    # Create and start sandbox
+                    created_id = await self.create_sandbox(sandbox_type, config)
+
+                    # Get sandbox and set to IDLE status
+                    sandbox = self._sandboxes.get(created_id)
+                    if sandbox:
+                        sandbox.status = SandboxStatus.IDLE
+                        sandbox.updated_at = datetime.now()
+
+                    # Add to pool
+                    self._sandbox_pool.append(created_id)
+                    created_ids.append(created_id)
+
+                    logger.info(f'Added sandbox {created_id} to pool')
+                except Exception as e:
+                    logger.error(f'Failed to create sandbox {i} for pool: {e}')
+
+            if created_ids:
+                self._pool_initialized = True
+
+            logger.info(f'Pool initialized with {len(created_ids)} sandboxes')
+            return created_ids
+
+    async def execute_tool_in_pool(
+        self, tool_name: str, parameters: Dict[str, Any], timeout: Optional[float] = None
+    ) -> ToolResult:
+        """Execute tool using an available sandbox from the pool.
+
+        Uses FIFO queue to get an idle sandbox, marks it as busy during execution,
+        then returns it to the pool as idle. Multiple concurrent requests are queued
+        and served in order as sandboxes become available.
+
+        Args:
+            tool_name: Tool name to execute
+            parameters: Tool parameters
+            timeout: Optional timeout for waiting for available sandbox
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            ValueError: If pool is empty or no sandbox available
+            TimeoutError: If timeout waiting for available sandbox
+        """
+        if not self._pool_initialized:
+            raise ValueError('Sandbox pool is empty, call initialize_pool first')
+
+        if not self._pool_condition:
+            raise RuntimeError('Sandbox manager not started')
+
+        timeout = timeout or self.config.timeout
+
+        async with self._pool_condition:
+            # Wait for an available sandbox
+            start_time = asyncio.get_event_loop().time()
+
+            while True:
+                # Try to find an idle sandbox
+                sandbox_id = None
+                for _ in range(len(self._sandbox_pool)):
+                    candidate_id = self._sandbox_pool.popleft()
+                    sandbox = self._sandboxes.get(candidate_id)
+
+                    if sandbox and sandbox.status == SandboxStatus.IDLE:
+                        sandbox_id = candidate_id
+                        # Mark as busy
+                        sandbox.status = SandboxStatus.BUSY
+                        sandbox.updated_at = datetime.now()
+                        logger.debug(f'Using sandbox {sandbox_id} from pool for tool {tool_name}')
+                        break
+                    elif sandbox:
+                        # Put back to end of queue if it exists but is not idle
+                        self._sandbox_pool.append(candidate_id)
+
+                if sandbox_id:
+                    break
+
+                # Check timeout before waiting
+                elapsed = asyncio.get_event_loop().time() - start_time
+                remaining = timeout - elapsed
+                if remaining <= 0:
+                    raise TimeoutError(f'Timeout waiting for available sandbox from pool after {timeout}s')
+
+                # Wait for notification that a sandbox is available
+                try:
+                    await asyncio.wait_for(self._pool_condition.wait(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f'Timeout waiting for available sandbox from pool after {timeout}s')
+
+        # Execute tool outside of condition lock
+        try:
+            sandbox = self._sandboxes[sandbox_id]
+            result = await sandbox.execute_tool(tool_name, parameters)
+            return result
+        finally:
+            # Return to pool and notify waiting tasks
+            async with self._pool_condition:
+                sandbox.status = SandboxStatus.IDLE
+                sandbox.updated_at = datetime.now()
+                self._sandbox_pool.append(sandbox_id)
+                logger.debug(f'Returned sandbox {sandbox_id} to pool')
+                # Notify one waiting task that a sandbox is available
+                self._pool_condition.notify(1)

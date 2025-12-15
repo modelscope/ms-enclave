@@ -14,6 +14,7 @@ from ..model import (
     HealthCheckResult,
     SandboxConfig,
     SandboxInfo,
+    SandboxManagerConfig,
     SandboxStatus,
     SandboxType,
     ToolExecutionRequest,
@@ -25,15 +26,15 @@ class SandboxServer:
     """FastAPI-based sandbox server.
     """
 
-    def __init__(self, cleanup_interval: int = 300, api_key: Optional[str] = None):
+    def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         """Initialize sandbox server.
 
         Args:
             cleanup_interval: Cleanup interval in seconds
             api_key: Optional API key to protect endpoints. If None, auth is disabled.
         """
-        self.manager = LocalSandboxManager(cleanup_interval)
-        self.api_key: Optional[str] = api_key
+        self.manager = LocalSandboxManager(config=config, **kwargs)
+        self.api_key: Optional[str] = config.api_key if config else kwargs.get('api_key')
         self.app = FastAPI(
             title='Sandbox API',
             description='Agent sandbox execution environment',
@@ -169,6 +170,35 @@ class SandboxServer:
             """Get system statistics."""
             return await self.manager.get_stats()
 
+        # Pool management
+        @self.app.post('/pool/initialize')
+        async def initialize_pool(
+            pool_size: Optional[int] = None, sandbox_type: Optional[SandboxType] = None, config: Optional[Dict] = None
+        ):
+            """Initialize sandbox pool."""
+            try:
+                sandbox_ids = await self.manager.initialize_pool(pool_size, sandbox_type, config)
+                return {
+                    'message': 'Pool initialized successfully',
+                    'pool_size': len(sandbox_ids),
+                    'sandbox_ids': sandbox_ids
+                }
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post('/pool/execute', response_model=ToolResult)
+        async def execute_tool_in_pool(tool_name: str, parameters: Dict[str, Any], timeout: Optional[float] = None):
+            """Execute tool using an available sandbox from the pool."""
+            try:
+                result = await self.manager.execute_tool_in_pool(tool_name, parameters, timeout)
+                return result
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except TimeoutError as e:
+                raise HTTPException(status_code=408, detail=str(e))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
     def run(self, host: str = '0.0.0.0', port: int = 8000, **kwargs):
         """Run the server.
 
@@ -182,7 +212,7 @@ class SandboxServer:
 
 
 # Create a default server instance
-def create_server(cleanup_interval: int = 300, api_key: Optional[str] = None) -> SandboxServer:
+def create_server(config: Optional[SandboxManagerConfig] = None, **kwargs) -> SandboxServer:
     """Create a sandbox server instance.
 
     Args:
@@ -192,4 +222,4 @@ def create_server(cleanup_interval: int = 300, api_key: Optional[str] = None) ->
     Returns:
         Sandbox server instance
     """
-    return SandboxServer(cleanup_interval, api_key)
+    return SandboxServer(config=config, **kwargs)

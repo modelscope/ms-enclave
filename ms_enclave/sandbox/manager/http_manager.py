@@ -6,28 +6,41 @@ import aiohttp
 
 from ms_enclave.utils import get_logger
 
-from ..model import SandboxConfig, SandboxInfo, SandboxStatus, SandboxType, ToolExecutionRequest, ToolResult
-from .base import SandboxManager
+from ..model import (
+    SandboxConfig,
+    SandboxInfo,
+    SandboxManagerConfig,
+    SandboxManagerType,
+    SandboxStatus,
+    SandboxType,
+    ToolExecutionRequest,
+    ToolResult,
+)
+from .base import SandboxManager, register_manager
 
 logger = get_logger()
 
 
+@register_manager(SandboxManagerType.HTTP)
 class HttpSandboxManager(SandboxManager):
     """HTTP-based sandbox manager for remote services.
     """
 
-    def __init__(self, base_url: str, timeout: int = 30, api_key: Optional[str] = None):
+    def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         """Initialize HTTP sandbox manager.
 
         Args:
-            base_url: Base URL of the sandbox service
-            timeout: Request timeout in seconds
-            api_key: Optional API key to include as ``X-API-Key`` header for all requests
+            config: Sandbox manager configuration
         """
-        super().__init__()
-        self.base_url = base_url.rstrip('/')
-        self.timeout = aiohttp.ClientTimeout(total=timeout)
-        self._default_headers: Optional[Dict[str, str]] = {'X-API-Key': api_key} if api_key else None
+        super().__init__(config, **kwargs)
+
+        self.base_url = self.config.base_url or kwargs.get('base_url')
+        if not self.base_url:
+            raise ValueError('base_url must be provided for HttpSandboxManager')
+
+        self.timeout = aiohttp.ClientTimeout(total=self.config.timeout or kwargs.get('timeout'))
+        self.api_key = self.config.api_key or kwargs.get('api_key')
+        self._default_headers: Optional[Dict[str, str]] = ({'X-API-Key': self.api_key} if self.api_key else None)
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def start(self) -> None:
@@ -326,6 +339,11 @@ class HttpSandboxManager(SandboxManager):
                 except Exception as e:
                     logger.error(f'Error deleting sandbox {sandbox_id}: {e}')
 
+            # Clear the pool tracking
+            async with self._pool_lock:
+                self._sandbox_pool.clear()
+                self._pool_initialized = False
+
             logger.info(f'Cleaned up {deleted_count} sandboxes created by this manager')
 
         except Exception as e:
@@ -366,6 +384,9 @@ class HttpSandboxManager(SandboxManager):
                 'tracked_status_counts': dict(status_counter),
                 'tracked_sandbox_types': dict(type_counter),
                 'running': self._running,
+                'pool_size': len(self._sandbox_pool),
+                'pool_enabled': self.config.pool_size > 0,
+                'pool_initialized': self._pool_initialized,
             }
 
             # Combine server and local stats
@@ -403,3 +424,128 @@ class HttpSandboxManager(SandboxManager):
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error during health check: {e}')
             return {'healthy': False, 'error': str(e)}
+
+    async def initialize_pool(
+        self,
+        pool_size: Optional[int] = None,
+        sandbox_type: Optional[SandboxType] = None,
+        config: Optional[Union[SandboxConfig, Dict]] = None
+    ) -> List[str]:
+        """Initialize sandbox pool via HTTP API.
+
+        Args:
+            pool_size: Number of sandboxes in pool (uses config if not provided)
+            sandbox_type: Type of sandbox to create
+            config: Sandbox configuration (uses config.sandbox_config if not provided)
+
+        Returns:
+            List of created sandbox IDs
+        """
+        if not self._session:
+            raise RuntimeError('Manager not started')
+
+        pool_size = pool_size or self.config.pool_size
+        if pool_size <= 0:
+            logger.warning('Pool size is 0, pool not initialized')
+            return []
+
+        config = config or self.config.sandbox_config
+        sandbox_type = sandbox_type or SandboxType.DOCKER
+
+        # Prepare request parameters
+        params = {}
+        if pool_size:
+            params['pool_size'] = pool_size
+        if sandbox_type:
+            params['sandbox_type'] = sandbox_type.value if isinstance(sandbox_type, SandboxType) else sandbox_type
+
+        payload = None
+        if config:
+            if isinstance(config, SandboxConfig):
+                payload = config.model_dump(exclude_none=True)
+            elif isinstance(config, dict):
+                payload = config
+
+        try:
+            # Match server's endpoint format: POST /pool/initialize
+            async with self._session.post(f'{self.base_url}/pool/initialize', params=params, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    sandbox_ids = data.get('sandbox_ids', [])
+
+                    # Track the pool locally
+                    async with self._pool_lock:
+                        for sandbox_id in sandbox_ids:
+                            # Get sandbox info
+                            sandbox_info = await self.get_sandbox_info(sandbox_id)
+                            if sandbox_info:
+                                self._sandboxes[sandbox_id] = sandbox_info
+                                self._sandbox_pool.append(sandbox_id)
+
+                        if sandbox_ids:
+                            self._pool_initialized = True
+
+                    logger.info(f'Initialized pool with {len(sandbox_ids)} sandboxes via HTTP API')
+                    return sandbox_ids
+                else:
+                    error_data = await response.json()
+                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+
+        except aiohttp.ClientError as e:
+            logger.error(f'HTTP client error initializing pool: {e}')
+            raise RuntimeError(f'Failed to initialize pool: {e}')
+
+    async def execute_tool_in_pool(
+        self, tool_name: str, parameters: Dict[str, Any], timeout: Optional[float] = None
+    ) -> ToolResult:
+        """Execute tool using an available sandbox from the pool via HTTP API.
+
+        Delegates to the server's pool execution endpoint which handles queuing
+        and sandbox availability.
+
+        Args:
+            tool_name: Tool name to execute
+            parameters: Tool parameters
+            timeout: Optional timeout for waiting for available sandbox
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            ValueError: If pool is empty or no sandbox available
+            TimeoutError: If timeout waiting for available sandbox
+        """
+        if not self._session:
+            raise RuntimeError('Manager not started')
+
+        if not self._pool_initialized:
+            raise ValueError('Sandbox pool is empty, call initialize_pool first')
+
+        timeout = timeout or self.config.timeout
+
+        # Prepare request
+        params = {'tool_name': tool_name}
+        if timeout:
+            params['timeout'] = timeout
+
+        payload = parameters
+
+        try:
+            # Match server's endpoint format: POST /pool/execute
+            async with self._session.post(f'{self.base_url}/pool/execute', params=params, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return ToolResult.model_validate(data)
+                elif response.status == 400:
+                    error_data = await response.json()
+                    raise ValueError(error_data.get('detail', 'Pool execution failed'))
+                elif response.status == 408:
+                    error_data = await response.json()
+                    raise TimeoutError(error_data.get('detail', 'Timeout waiting for available sandbox'))
+                else:
+                    error_data = await response.json()
+                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+
+        except aiohttp.ClientError as e:
+            logger.error(f'HTTP client error executing tool in pool: {e}')
+            raise RuntimeError(f'Failed to execute tool in pool: {e}')
