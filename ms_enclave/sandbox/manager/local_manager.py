@@ -1,10 +1,11 @@
 """Sandbox environment manager."""
 
 import asyncio
-from collections import Counter, deque
+from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
+from ms_enclave.sandbox.model.constants import DEFAULT_POOL_EXECUTION_TIMEOUT
 from ms_enclave.utils import get_logger
 
 from ..boxes import Sandbox, SandboxFactory
@@ -386,7 +387,7 @@ class LocalSandboxManager(SandboxManager):
         if not self._pool_condition:
             raise RuntimeError('Sandbox manager not started')
 
-        timeout = timeout or self.config.timeout or 60 * 60  # Default 60 minutes
+        timeout = timeout or self.config.timeout or DEFAULT_POOL_EXECUTION_TIMEOUT
 
         async with self._pool_condition:
             # Wait for an available sandbox

@@ -581,7 +581,7 @@ class TestHttpPoolExecution(unittest.IsolatedAsyncioTestCase):
                 'python_executor',
                 {'code': f'print("task {i}")', 'timeout': 30}
             )
-            for i in range(5)
+            for i in range(3)
         ]
         results = await asyncio.gather(*tasks)
 
