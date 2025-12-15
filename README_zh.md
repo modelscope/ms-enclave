@@ -95,6 +95,56 @@ asyncio.run(main())
 - 使用 LocalSandboxManager：在本机统一编排多个沙箱的生命周期/清理；适合服务化、多任务并行场景
 - 使用 HttpSandboxManager：通过远程 HTTP 服务统一管理沙箱；适合跨机/分布式或隔离更强的部署
 
+### 0) 管理器工厂：SandboxManagerFactory（自动选择本地/HTTP）
+
+适用场景：
+- 希望用一个入口根据参数自动选择本地或 HTTP 管理器
+- 需要查询已注册的管理器类型，或统一构造逻辑
+
+要点：
+- 显式传入 manager_type 时，按类型创建
+- 当提供 base_url（在 config 或 kwargs）时，创建 HTTP 管理器
+- 两者都未提供时，默认创建本地管理器
+
+示例：通过 base_url 隐式选择 HTTP 管理器
+```python
+import asyncio
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+
+async def main():
+    async with SandboxManagerFactory.create_manager(base_url='http://127.0.0.1:8000') as m:
+        # 与 HttpSandboxManager 用法一致
+        # 例如：创建 DOCKER 沙箱并执行工具
+        # ... 你的代码 ...
+        pass
+
+asyncio.run(main())
+```
+
+示例：显式选择 + 自定义配置
+```python
+import asyncio
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+from ms_enclave.sandbox.model import SandboxManagerConfig, SandboxManagerType
+
+async def main():
+    cfg = SandboxManagerConfig(cleanup_interval=600)
+    async with SandboxManagerFactory.create_manager(
+        manager_type=SandboxManagerType.LOCAL, config=cfg
+    ) as m:
+        # 与 LocalSandboxManager 用法一致
+        # ... 你的代码 ...
+        pass
+
+asyncio.run(main())
+```
+
+查看已注册类型：
+```python
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+print(SandboxManagerFactory.get_registered_types())
+```
+
 ### 1) 直接创建沙箱：SandboxFactory（轻量、临时）
 
 适用场景：
@@ -191,6 +241,66 @@ async def main():
 asyncio.run(main())
 ```
 
+### 4) 沙箱池：预热复用的工作进程（Sandbox Pool）
+
+为何使用：
+- 通过预热固定数量的沙箱，摊销容器启动开销，提高吞吐。
+- 每次执行从池中借出沙箱并在完成后归还；当全部忙碌时按 FIFO 排队。
+
+本地管理示例：
+
+```python
+import asyncio
+from ms_enclave.sandbox.manager import LocalSandboxManager
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def main():
+    async with LocalSandboxManager() as m:
+        cfg = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+        # 预热 2 个沙箱
+        await m.initialize_pool(pool_size=2, sandbox_type=SandboxType.DOCKER, config=cfg)
+
+        # 多次执行；忙时按 FIFO 排队，执行完成后归还至池中
+        tasks = [
+            m.execute_tool_in_pool('python_executor', {'code': f'print("task {i}")', 'timeout': 30})
+            for i in range(5)
+        ]
+        results = await asyncio.gather(*tasks)
+        print([r.output.strip() for r in results])
+
+        # 查看统计
+        stats = await m.get_stats()
+        print('pool_size =', stats['pool_size'])
+
+asyncio.run(main())
+```
+
+HTTP 管理示例：
+
+```python
+import asyncio
+from ms_enclave.sandbox.manager import HttpSandboxManager
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def main():
+    async with HttpSandboxManager(base_url='http://127.0.0.1:8000') as m:
+        cfg = DockerSandboxConfig(image='python:3.11-slim', tools_config={'python_executor': {}})
+        await m.initialize_pool(pool_size=2, sandbox_type=SandboxType.DOCKER, config=cfg)
+
+        r = await m.execute_tool_in_pool('python_executor', {'code': 'print("hello from pool")', 'timeout': 30})
+        print(r.output)
+
+asyncio.run(main())
+```
+
+说明：
+- 等待超时：`await m.execute_tool_in_pool(..., timeout=1.0)` 若在超时时间内无可用沙箱将抛出 `TimeoutError`。
+- FIFO 行为：在并发负载下，借还顺序遵循 FIFO。
+- 错误处理：即使执行失败，沙箱也会归还至池中。
+
 ---
 
 ## 沙箱类型与工具支持
@@ -234,6 +344,10 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 - `ports`: 端口映射，形如 `{ "8888/tcp": ("127.0.0.1", 8888) }`
 - `network_enabled`: 是否启用网络（Notebook 沙箱需 True）
 - `remove_on_exit`: 退出后是否删除容器（默认 True）
+
+管理器配置（SandboxManagerConfig）：
+- `base_url`：若设置则自动选择 HttpSandboxManager
+- `cleanup_interval`：本地管理器的后台清理间隔（秒）
 
 **Sandbox中安装额外依赖示例**
 ```python

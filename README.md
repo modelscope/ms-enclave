@@ -93,6 +93,56 @@ asyncio.run(main())
 - Using LocalSandboxManager: Uniformly orchestrate lifecycle/cleanup of multiple sandboxes on local machine; suitable for service-oriented, multi-task parallel scenarios
 - Using HttpSandboxManager: Manage sandboxes uniformly through remote HTTP service; suitable for cross-machine/distributed or stronger isolation deployments
 
+### 0) Manager Factory: SandboxManagerFactory (Automatic Local/HTTP selection)
+
+When to use:
+- You want a single entry point that chooses Local or HTTP manager automatically.
+- You prefer central registration and discovery of available manager types.
+
+Key points:
+- If manager_type is provided, it is used directly.
+- If base_url is provided (in config or kwargs), HTTP manager is created.
+- Otherwise, Local manager is created by default.
+
+Example: implicit selection by base_url
+```python
+import asyncio
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+
+async def main():
+    async with SandboxManagerFactory.create_manager(base_url='http://127.0.0.1:8000') as m:
+        # Use exactly like HttpSandboxManager
+        # e.g., create a DOCKER sandbox and execute a tool
+        # ... your code ...
+        pass
+
+asyncio.run(main())
+```
+
+Example: explicit selection + custom config
+```python
+import asyncio
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+from ms_enclave.sandbox.model import SandboxManagerConfig, SandboxManagerType
+
+async def main():
+    cfg = SandboxManagerConfig(cleanup_interval=600)
+    async with SandboxManagerFactory.create_manager(
+        manager_type=SandboxManagerType.LOCAL, config=cfg
+    ) as m:
+        # Use exactly like LocalSandboxManager
+        # ... your code ...
+        pass
+
+asyncio.run(main())
+```
+
+Discover registered manager types:
+```python
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+print(SandboxManagerFactory.get_registered_types())
+```
+
 ### 1) Direct Sandbox Creation: SandboxFactory (Lightweight, Temporary)
 
 Use Cases:
@@ -189,6 +239,66 @@ async def main():
 asyncio.run(main())
 ```
 
+### 4) Pooled Sandboxes: Pre-warmed workers (Sandbox Pool)
+
+Why:
+- Amortize container startup by keeping a fixed-size pool of ready sandboxes.
+- Each execution borrows a sandbox and returns it; requests queue FIFO when all are busy.
+
+Local pool example:
+
+```python
+import asyncio
+from ms_enclave.sandbox.manager import LocalSandboxManager
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def main():
+    async with LocalSandboxManager() as m:
+        cfg = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+        # Create a pool of 2 pre-warmed sandboxes
+        await m.initialize_pool(pool_size=2, sandbox_type=SandboxType.DOCKER, config=cfg)
+
+        # Execute multiple tasks; sandboxes are reused and queued FIFO when busy
+        tasks = [
+            m.execute_tool_in_pool('python_executor', {'code': f'print("task {i}")', 'timeout': 30})
+            for i in range(5)
+        ]
+        results = await asyncio.gather(*tasks)
+        print([r.output.strip() for r in results])
+
+        # Pool stats
+        stats = await m.get_stats()
+        print('pool_size =', stats['pool_size'])
+
+asyncio.run(main())
+```
+
+HTTP pool example:
+
+```python
+import asyncio
+from ms_enclave.sandbox.manager import HttpSandboxManager
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def main():
+    async with HttpSandboxManager(base_url='http://127.0.0.1:8000') as m:
+        cfg = DockerSandboxConfig(image='python:3.11-slim', tools_config={'python_executor': {}})
+        await m.initialize_pool(pool_size=2, sandbox_type=SandboxType.DOCKER, config=cfg)
+
+        r = await m.execute_tool_in_pool('python_executor', {'code': 'print("hello from pool")', 'timeout': 30})
+        print(r.output)
+
+asyncio.run(main())
+```
+
+Notes:
+- Waiting timeout: `await m.execute_tool_in_pool(..., timeout=1.0)` raises `TimeoutError` if no sandbox is available in time.
+- FIFO behavior: pool borrows/returns in FIFO order under load.
+- Errors: even if a tool execution fails, the sandbox is returned to the pool.
+
 ---
 
 ## Sandbox Types & Tool Support
@@ -232,6 +342,10 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 - `ports`: Port mapping, formatted as `{ "8888/tcp": ("127.0.0.1", 8888) }`
 - `network_enabled`: Whether to enable network (Notebook sandbox requires True)
 - `remove_on_exit`: Whether to delete container on exit (default True)
+
+Manager Config (SandboxManagerConfig):
+- `base_url`: If set, HttpSandboxManager is selected automatically
+- `cleanup_interval`: Background cleanup interval in seconds (local manager)
 
 **Example of Installing Additional Dependencies in Sandbox**
 ```python
