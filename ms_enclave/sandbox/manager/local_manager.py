@@ -372,7 +372,6 @@ class LocalSandboxManager(SandboxManager):
         Args:
             tool_name: Tool name to execute
             parameters: Tool parameters
-            timeout: Optional timeout for waiting for available sandbox
 
         Returns:
             Tool execution result
@@ -387,7 +386,7 @@ class LocalSandboxManager(SandboxManager):
         if not self._pool_condition:
             raise RuntimeError('Sandbox manager not started')
 
-        timeout = timeout or self.config.timeout
+        timeout = timeout or self.config.timeout or 60 * 60  # Default 60 minutes
 
         async with self._pool_condition:
             # Wait for an available sandbox
