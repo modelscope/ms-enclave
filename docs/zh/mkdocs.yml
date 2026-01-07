@@ -26,6 +26,8 @@ nav:
 
 theme:
   name: material
+  logo: _static/icon.svg
+  favicon: _static/icon.svg
   features:
     - navigation.instant
     - navigation.tabs
