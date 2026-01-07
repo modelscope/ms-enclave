@@ -1,5 +1,7 @@
 # ms-enclave Documentation
 
+![image](./_static/logo.png)
+
 ms-enclave is a modular and robust sandbox runtime providing a secure, isolated execution environment for your applications. It leverages Docker containers for strong isolation, ships with local/HTTP managers, and an extensible tool system to execute code safely and efficiently in a controlled environment.
 
 ## Key Features

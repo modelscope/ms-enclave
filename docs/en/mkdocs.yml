@@ -8,7 +8,7 @@ edit_uri: edit/main/docs/en/docs/
 
 nav:
   - Quick Start:
-    - Introduction: getting-started/intro.md
+    - Introduction: index.md
     - Installation: getting-started/installation.md
     - Quickstart: getting-started/quickstart.md
   - Core Concepts:

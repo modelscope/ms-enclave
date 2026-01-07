@@ -1,6 +1,6 @@
 # ms-enclave 中文文档
 
-![image](../_static/logo.png)
+![image](./_static/logo.png)
 
 ms-enclave 是一个模块化且稳定的沙箱运行时环境，为应用程序提供安全的隔离执行环境。它通过 Docker 容器实现强隔离，配套本地/HTTP 管理器与可扩展工具系统，帮助你在受控环境中安全、高效地执行代码。
 
