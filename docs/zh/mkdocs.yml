@@ -1,6 +1,24 @@
 site_name: ms-enclave 文档
 site_url: !ENV READTHEDOCS_CANONICAL_URL
 
+# Add GitHub repo info for header link and star count
+repo_name: modelscope/ms-enclave
+repo_url: https://github.com/modelscope/ms-enclave
+edit_uri: edit/main/docs/zh/docs/
+
+nav:
+  - 快速开始: 
+    - 介绍: getting-started/intro.md
+    - 安装: getting-started/installation.md
+    - 上手示例: getting-started/quickstart.md
+  - 核心概念: 
+    - basic/concepts.md
+  - 基础使用: 
+    - basic/usage.md
+  - 进阶教程:
+    - HTTP 服务: advanced/server.md
+    - 自定义扩展: advanced/customization.md
+
 theme:
   name: material
   features:
@@ -10,9 +28,13 @@ theme:
     - navigation.path
     - navigation.indexes
     - navigation.top
+    - toc.integrate
+    - toc.follow
     - search
     - search.highlight
     - search.suggest
+    - content.code.copy
+    - content.code.annotate
 
   palette:
     # Palette toggle for automatic mode
@@ -38,6 +60,37 @@ theme:
         icon: material/brightness-4
         name: Switch to system preference
 
+# Add social links (bottom right)
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/modelscope/ms-enclave
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ms-enclave/
+
+# Configure extensions for highlighting and fancy components
+markdown_extensions:
+  - admonition
+  - abbr
+  - attr_list
+  - def_list
+  - footnotes
+  - meta
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
 
 plugins:
   - search
