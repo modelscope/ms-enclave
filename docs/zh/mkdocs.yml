@@ -1,0 +1,198 @@
+site_name: ms-enclave 文档
+site_url: !ENV READTHEDOCS_CANONICAL_URL
+
+# Add GitHub repo info for header link and star count
+repo_name: modelscope/ms-enclave
+repo_url: https://github.com/modelscope/ms-enclave
+edit_uri: edit/main/docs/zh/docs/
+
+nav:
+  - 快速开始: 
+    - 介绍: getting-started/intro.md
+    - 安装: getting-started/installation.md
+    - 上手示例: getting-started/quickstart.md
+  - 核心概念: 
+    - basic/concepts.md
+  - 基础使用: 
+    - basic/usage.md
+  - 进阶教程:
+    - HTTP 服务: advanced/server.md
+    - 自定义扩展: advanced/customization.md
+  - API 参考:
+    - 概览: api/index.md
+    - 管理器: api/manager.md
+    - 沙箱: api/sandbox.md
+    - 工具: api/tools.md
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - toc.integrate
+    - toc.follow
+    - search
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      primary: indigo
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      primary: indigo
+      scheme: default 
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      primary: indigo
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+# Add social links (bottom right)
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/modelscope/ms-enclave
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ms-enclave/
+
+# Configure extensions for highlighting and fancy components
+markdown_extensions:
+  - admonition
+  - abbr
+  - attr_list
+  - def_list
+  - footnotes
+  - meta
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        # See: https://mkdocstrings.github.io/python/usage/
+        python:
+          # Where to find your sources, see "Finding modules".
+          paths: [../../]
+
+          # Load object inventories to enable cross-references to other projects.
+          inventories:
+          - https://docs.python.org/3/objects.inv
+          # Also load inventories of your dependencies, generally served at
+          # https://docs-url-for-your-dependency/objects.inv.
+
+          options:
+
+            # DOCSTRINGS -------------------------------------------------------------
+            docstring_options:
+              # Discard first line of `__init__` method docstrings,
+              # useful when merging such docstrings into their parent class'.
+              ignore_init_summary: true
+
+            # Tables are generally too large, lists will fix this.
+            docstring_section_style: list
+
+            # CROSS-REFERENCES -------------------------------------------------------
+            # Enable relative crossrefs and scoped crossrefs, see Docstrings options.
+            relative_crossrefs: true  # Sponsors only!
+            scoped_crossrefs: true  # Sponsors only!
+
+            # Enable cross-references in signatures.
+            signature_crossrefs: true
+
+            # Unwrap actual types from `Annotated` type annotations.
+            unwrap_annotated: true
+
+            # MEMBERS ----------------------------------------------------------------
+            # Only render pulic symbols.
+            filters: public  # Sponsors only!
+            # Comment the option otherwise to get the default filters.
+
+            # Show class inherited members.
+            inherited_members: true
+
+            # Render auto-generated summaries of attributes, functions, etc.
+            # at the start of each symbol's documentation.
+            summary: true
+
+            # HEADINGS ---------------------------------------------------------------
+            # For auto-generated pages, one module per page,
+            # make the module heading be the H1 heading of the page.
+            heading_level: 1
+
+            # Render headings for parameters, making them linkable.
+            parameter_headings: true
+
+            # Render headings for type parameters too.
+            type_parameter_headings: true
+
+            # Always show the heading for the symbol you render with `::: id`.
+            show_root_heading: true
+
+            # Only show the name of the symbols you inject render `::: id`.
+            show_root_full_path: false
+
+            # Show the type of symbol (class, function, etc.) in the heading.
+            show_symbol_type_heading: true
+
+            # Show the type of symbol (class, function, etc.) in the table of contents.
+            show_symbol_type_toc: true
+
+            # SIGNATURES -------------------------------------------------------------
+            # Format code to 80 + 10% margin (Black and Ruff defaults)
+            # in signatures and attribute value code blocks.
+            # Needs Black/Ruff installed.
+            line_length: 88
+
+            # Merge signature and docstring of `__init__` methods
+            # into their parent class signature and docstring.
+            merge_init_into_class: true
+
+            # Render signatures and attribute values in a separate code block,
+            # below the symbol heading.
+            separate_signature: true
+
+            # Show type annotations in signatures.
+            show_signature_annotations: true
+
+            # Show type parameters in signatures.
+            show_signature_type_parameters: true
+
+            # OTHER ------------------------------------------------------------------
+            # Show backlinks to other documentation sections within each symbol.
+            backlinks: tree  # Sponsors only!
+
+            # Show base classes OR inheritance diagram.
+            show_bases: false
+            show_inheritance_diagram: true  # Sponsors only!

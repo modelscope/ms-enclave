@@ -29,6 +29,7 @@ repos:
       - id: trailing-whitespace
         exclude: thirdparty/|docs/
       - id: check-yaml
+        args: [--unsafe]
         exclude: thirdparty/
       - id: end-of-file-fixer
         exclude: thirdparty/|docs/
