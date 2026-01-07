@@ -18,6 +18,11 @@ nav:
   - 进阶教程:
     - HTTP 服务: advanced/server.md
     - 自定义扩展: advanced/customization.md
+  - API 参考:
+    - 概览: api/index.md
+    - 管理器: api/manager.md
+    - 沙箱: api/sandbox.md
+    - 工具: api/tools.md
 
 theme:
   name: material
