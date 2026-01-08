@@ -91,7 +91,52 @@ async def main():
 
 asyncio.run(main())
 ```
+---
 
+## Agent Model Tool Calling (OpenAI Tools)
+
+Expose sandbox tools to the Agent in OpenAI Tools format, allowing the model to trigger tools and execute them securely in the sandbox.
+
+````python
+import asyncio, os, json
+from openai import OpenAI
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def demo():
+    client = OpenAI(
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key=os.getenv("DASHSCOPE_API_KEY")
+    )
+    async with SandboxManagerFactory.create_manager() as m:
+        cfg = DockerSandboxConfig(image="python:3.11-slim", tools_config={"python_executor": {}, "shell_executor": {}})
+        sid = await m.create_sandbox(SandboxType.DOCKER, cfg)
+
+        tools = list((await m.get_sandbox_tools(sid)).values())
+        messages = [{"role": "user", "content": "Print 'hello' in Python, then list /sandbox via shell."}]
+
+        rsp = client.chat.completions.create(model="qwen-plus", messages=messages, tools=tools, tool_choice="auto")
+        msg = rsp.choices[0].message
+        messages.append(msg.model_dump())
+
+        if getattr(msg, "tool_calls", None):
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                args = json.loads(tc.function.arguments or "{}")
+                result = await m.execute_tool(sid, name, args)
+                messages.append({"role": "tool", "content": result.model_dump_json(), "tool_call_id": tc.id, "name": name})
+            final = client.chat.completions.create(model="qwen-plus", messages=messages)
+            print(final.choices[0].message.content or "")
+        else:
+            print(msg.content or "")
+
+asyncio.run(demo())
+````
+
+**Notes:**
+- Use `get_sandbox_tools(sandbox_id)` to retrieve tool schemas (OpenAI-compatible)
+- Pass `tools=...` to the model, handle returned `tool_calls` and execute them in the sandbox
+- Call the model again to generate the final answer
 ---
 
 ## Typical Usage Patterns & Examples

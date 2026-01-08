@@ -96,6 +96,53 @@ asyncio.run(main())
 
 ---
 
+## Agent 模型工具调用（OpenAI Tools）
+
+将沙箱工具以 OpenAI Tools 形式暴露给 Agent，模型触发工具后在沙箱中安全执行。
+
+````python
+import asyncio, os, json
+from openai import OpenAI
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def demo():
+    client = OpenAI(
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key=os.getenv("DASHSCOPE_API_KEY")
+    )
+    async with SandboxManagerFactory.create_manager() as m:
+        cfg = DockerSandboxConfig(image="python:3.11-slim", tools_config={"python_executor": {}, "shell_executor": {}})
+        sid = await m.create_sandbox(SandboxType.DOCKER, cfg)
+
+        tools = list((await m.get_sandbox_tools(sid)).values())
+        messages = [{"role": "user", "content": "Print 'hello' in Python, then list /sandbox via shell."}]
+
+        rsp = client.chat.completions.create(model="qwen-plus", messages=messages, tools=tools, tool_choice="auto")
+        msg = rsp.choices[0].message
+        messages.append(msg.model_dump())
+
+        if getattr(msg, "tool_calls", None):
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                args = json.loads(tc.function.arguments or "{}")
+                result = await m.execute_tool(sid, name, args)
+                messages.append({"role": "tool", "content": result.model_dump_json(), "tool_call_id": tc.id, "name": name})
+            final = client.chat.completions.create(model="qwen-plus", messages=messages)
+            print(final.choices[0].message.content or "")
+        else:
+            print(msg.content or "")
+
+asyncio.run(demo())
+````
+
+说明：
+- 使用 `get_sandbox_tools(sandbox_id)` 获取工具 schema（OpenAI 兼容）
+- 将 `tools=...` 传入模型，处理返回的 `tool_calls` 并在沙箱执行
+- 再次调用模型生成最终答案
+
+---
+
 ## 典型使用方式与示例
 
 

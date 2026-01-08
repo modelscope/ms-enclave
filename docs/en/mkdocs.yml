@@ -69,6 +69,13 @@ theme:
 
 # Add social links (bottom right)
 extra:
+  alternate:
+    - name: English
+      link: https://ms-enclave.readthedocs.io/en/latest/ 
+      lang: en
+    - name: 中文
+      link: https://ms-enclave.readthedocs.io/zh-cn/latest/
+      lang: zh
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/modelscope/ms-enclave
