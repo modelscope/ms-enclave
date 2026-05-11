@@ -1,7 +1,7 @@
 """Base tool interface and factory."""
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from ..model import SandboxType, ToolResult
 from .tool_info import ToolParams
@@ -54,16 +54,18 @@ class Tool(ABC):
 
     @property
     @abstractmethod
-    def required_sandbox_type(self) -> Optional[SandboxType]:
+    def required_sandbox_types(self) -> Optional[List[SandboxType]]:
         """
-        Return the required sandbox type for this tool.
+        Return the list of sandbox types this tool can run in.
 
-        If a tool specifies a required_sandbox_type, it can be used in:
-        1. Sandboxes of that exact type
-        2. Sandboxes that "inherit" from that type (e.g., DOCKER_NOTEBOOK can use DOCKER tools)
+        If a tool specifies ``required_sandbox_types``, it can be used in:
+        1. Sandboxes whose type is in that list
+        2. Sandboxes that "inherit" from any of those types (e.g., DOCKER_NOTEBOOK
+           inherits from DOCKER and can therefore use tools requiring DOCKER)
 
         Returns:
-            Required sandbox type or None if tool works in any sandbox
+            List of accepted sandbox types, or ``None``/empty list to accept any
+            sandbox type.
         """
         pass
 
@@ -77,10 +79,11 @@ class Tool(ABC):
         Returns:
             True if the tool can be used in the given sandbox type
         """
-        if self.required_sandbox_type is None:
+        required = self.required_sandbox_types
+        if not required:
             return True
 
-        return SandboxType.is_compatible(sandbox_type, self.required_sandbox_type)
+        return any(SandboxType.is_compatible(sandbox_type, rt) for rt in required)
 
     @abstractmethod
     async def execute(self, sandbox_context: 'Sandbox', **kwargs) -> ToolResult:

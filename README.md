@@ -374,7 +374,7 @@ Current built-in sandbox types:
 Tool loading rules:
 
 - Tools are only initialized and available when explicitly declared in `tools_config`
-- Tools validate `required_sandbox_type`, automatically ignored if mismatched
+- Tools validate `required_sandbox_types`, automatically ignored if mismatched
 
 Example:
 

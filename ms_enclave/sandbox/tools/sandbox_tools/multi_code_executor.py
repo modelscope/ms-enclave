@@ -9,9 +9,12 @@ from ms_enclave.sandbox.model import ExecutionStatus, SandboxType, ToolResult
 from ms_enclave.sandbox.tools.base import register_tool
 from ms_enclave.sandbox.tools.sandbox_tool import SandboxTool
 from ms_enclave.sandbox.tools.tool_info import ToolParams
+from ms_enclave.utils import get_logger
 
 if TYPE_CHECKING:
-    from ms_enclave.sandbox.boxes import DockerSandbox
+    from ms_enclave.sandbox.boxes import DockerSandbox, VolcengineSandbox
+
+logger = get_logger()
 
 
 @register_tool('multi_code_executor')
@@ -19,7 +22,7 @@ class MultiCodeExecutor(SandboxTool):
     """Execute code in multiple languages in an isolated Docker environment."""
 
     _name = 'multi_code_executor'
-    _sandbox_type = SandboxType.DOCKER
+    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
     _description = 'Execute code in various languages (python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket) with runtime tuning'  # noqa: E501
     _parameters = ToolParams(
         type='object',
@@ -106,6 +109,23 @@ class MultiCodeExecutor(SandboxTool):
         """Execute code by preparing a per-run workdir under /tmp and issuing build/run commands."""
         if not language or not code.strip():
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='Invalid input')
+
+        # Stateless remote sandbox: delegate to /run_code; features like ``files`` and
+        # ``compile_timeout`` are not supported by the remote API and are ignored.
+        sbx_type = getattr(sandbox_context, 'sandbox_type', None)
+        if sbx_type == SandboxType.VOLCENGINE:
+            if files:
+                logger.warning('multi_code_executor: `files` is ignored for VolcEngine/SandboxFusion backend')
+            if compile_timeout is not None:
+                logger.warning('multi_code_executor: `compile_timeout` is ignored for VolcEngine/SandboxFusion backend')
+            try:
+                volcengine: 'VolcengineSandbox' = sandbox_context  # type: ignore[assignment]
+                resp = await volcengine.run_code(code, language=language, timeout=run_timeout)
+                return volcengine.build_tool_result(self.name, resp)
+            except Exception as e:
+                return ToolResult(
+                    tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Execution failed: {str(e)}'
+                )
 
         lang = language.lower().strip()
         unique_prefix = f'mce_{uuid.uuid4().hex}'

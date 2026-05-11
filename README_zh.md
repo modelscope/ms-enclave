@@ -379,7 +379,7 @@ asyncio.run(main())
 工具加载规则：
 
 - 仅当在 `tools_config` 中显式声明时，工具才会初始化并可用
-- 工具会校验 `required_sandbox_type`，不匹配则自动忽略
+- 工具会校验 `required_sandbox_types`，不匹配则自动忽略
 
 示例：
 

@@ -25,7 +25,7 @@ class FileOperation(SandboxTool):
     """
 
     _name = 'file_operation'
-    _sandbox_type = SandboxType.DOCKER
+    _sandbox_types = [SandboxType.DOCKER]
     _description = 'Perform file operations like read, write, delete, and list files'
     _parameters = ToolParams(
         type='object',

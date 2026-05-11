@@ -10,14 +10,14 @@ from ms_enclave.sandbox.tools.sandbox_tool import SandboxTool
 from ms_enclave.sandbox.tools.tool_info import ToolParams
 
 if TYPE_CHECKING:
-    from ms_enclave.sandbox.boxes import DockerSandbox
+    from ms_enclave.sandbox.boxes import DockerSandbox, VolcengineSandbox
 
 
 @register_tool('python_executor')
 class PythonExecutor(SandboxTool):
 
     _name = 'python_executor'
-    _sandbox_type = SandboxType.DOCKER
+    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
     _description = 'Execute Python code in an isolated environment using IPython'
     _parameters = ToolParams(
         type='object',
@@ -38,11 +38,23 @@ class PythonExecutor(SandboxTool):
     async def execute(self, sandbox_context: 'DockerSandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
         """Execute Python code by writing to a temporary file and executing it."""
 
-        script_basename = f'exec_script_{uuid.uuid4().hex}.py'
-        script_path = f'/tmp/{script_basename}'
-
         if not code.strip():
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No code provided')
+
+        # Stateless remote sandbox (e.g. VolcEngine/SandboxFusion): just POST /run_code.
+        sbx_type = getattr(sandbox_context, 'sandbox_type', None)
+        if sbx_type == SandboxType.VOLCENGINE:
+            try:
+                volcengine: 'VolcengineSandbox' = sandbox_context  # type: ignore[assignment]
+                resp = await volcengine.run_code(code, language='python', timeout=timeout)
+                return volcengine.build_tool_result(self.name, resp)
+            except Exception as e:
+                return ToolResult(
+                    tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Execution failed: {str(e)}'
+                )
+
+        script_basename = f'exec_script_{uuid.uuid4().hex}.py'
+        script_path = f'/tmp/{script_basename}'
 
         try:
 

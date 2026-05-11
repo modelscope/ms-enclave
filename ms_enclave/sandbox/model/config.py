@@ -99,6 +99,106 @@ class DockerNotebookConfig(DockerSandboxConfig):
     token: Optional[str] = Field(None, description='Token for Jupyter Notebook access')
 
 
+class VolcengineSandboxConfig(SandboxConfig):
+    """Volcengine/SandboxFusion stateless sandbox configuration.
+
+    The VolcEngine sandbox is stateless and exposed via an HTTP service
+    started manually by the user (e.g. via
+    ``docker run -it -p 8080:8080 vemlp-cn-beijing.cr.volces.com/preset-images/code-sandbox:server-20250609``).
+
+    HTTP-level settings can be provided either on this config (for direct
+    ``SandboxFactory.create_sandbox`` usage) or on
+    :class:`VolcengineSandboxManagerConfig` (when going through the manager,
+    which injects its own values at sandbox creation time).
+    """
+
+    # ---- HTTP-level settings (also accepted by SandboxFactory) ----
+    base_url: Optional[str] = Field(
+        None,
+        description='SandboxFusion HTTP service base URL, e.g. http://localhost:8080',
+    )
+    run_code_path: str = Field(
+        '/run_code',
+        description='Path of the run_code endpoint',
+    )
+    request_timeout: float = Field(
+        30.0,
+        description='Per-request HTTP timeout in seconds',
+    )
+    verify_ssl: bool = Field(
+        True,
+        description='Whether to verify SSL certificates',
+    )
+    extra_headers: Optional[Dict[str, str]] = Field(
+        None,
+        description='Extra HTTP headers to attach to every request',
+    )
+    api_key: Optional[str] = Field(
+        None,
+        description='Optional API key; sent as Authorization header',
+    )
+    dataset_language_map: Optional[Dict[str, str]] = Field(
+        None,
+        description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).',
+    )
+
+    # ---- Sandbox-local options ----
+    tool_language_map: Dict[
+        str,
+        str] = Field(default_factory=dict, description='Per-tool language override, e.g. {"shell_executor": "bash"}.')
+
+    @field_validator('base_url')
+    @classmethod
+    def _normalize_base_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.rstrip('/')
+            if not v:
+                raise ValueError('base_url, when provided, must be non-empty')
+        return v
+
+    @field_validator('run_code_path')
+    @classmethod
+    def _normalize_run_code_path(cls, v: str) -> str:
+        return v if v.startswith('/') else f'/{v}'
+
+
+class VolcengineSandboxManagerConfig(SandboxManagerConfig):
+    """Manager-level configuration for the Volcengine/SandboxFusion backend."""
+
+    base_url: str = Field(..., description='SandboxFusion HTTP service base URL, e.g. http://localhost:8080')
+    api_key: Optional[str] = Field(None, description='Optional API key; sent as Authorization header')
+    request_timeout: float = Field(default=30.0, description='Per-request HTTP timeout in seconds')
+    verify_ssl: bool = Field(default=True, description='Whether to verify SSL certificates')
+    run_code_path: str = Field(default='/run_code', description='Path of the run_code endpoint')
+    extra_headers: Optional[Dict[str, str]] = Field(None, description='Extra HTTP headers to attach to every request')
+    max_concurrency: int = Field(default=16, description='Maximum concurrent requests shared by this manager')
+    dataset_language_map: Optional[
+        Dict[str, str]
+    ] = Field(None, description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).')
+
+    @field_validator('base_url')
+    def validate_base_url(cls, v):
+        if not v:
+            raise ValueError('base_url is required for VolcengineSandboxManagerConfig')
+        return v.rstrip('/')
+
+    @field_validator('max_concurrency')
+    def validate_max_concurrency(cls, v):
+        if v <= 0:
+            raise ValueError('max_concurrency must be positive')
+        return v
+
+    @field_validator('request_timeout')
+    def validate_request_timeout(cls, v):
+        if v <= 0:
+            raise ValueError('request_timeout must be positive')
+        return v
+
+    @field_validator('run_code_path')
+    def validate_run_code_path(cls, v):
+        return v if v.startswith('/') else f'/{v}'
+
+
 class ToolConfig(BaseModel):
     """Tool configuration."""
 
