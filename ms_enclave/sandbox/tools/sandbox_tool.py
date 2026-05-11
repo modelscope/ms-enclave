@@ -43,4 +43,4 @@ class SandboxTool(Tool):
     @property
     def required_sandbox_types(self) -> Optional[List[SandboxType]]:
         """Get the list of sandbox types this tool can run in."""
-        return list(self._sandbox_types) if self._sandbox_types else self._sandbox_types
+        return list(self._sandbox_types) if self._sandbox_types is not None else None
