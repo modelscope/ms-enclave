@@ -102,16 +102,64 @@ class DockerNotebookConfig(DockerSandboxConfig):
 class VolcengineSandboxConfig(SandboxConfig):
     """Volcengine/SandboxFusion stateless sandbox configuration.
 
-    Note: The VolcEngine sandbox is stateless and exposed via an HTTP service
+    The VolcEngine sandbox is stateless and exposed via an HTTP service
     started manually by the user (e.g. via
     ``docker run -it -p 8080:8080 vemlp-cn-beijing.cr.volces.com/preset-images/code-sandbox:server-20250609``).
-    HTTP-level settings (base_url, api_key, etc.) live on the manager config;
-    this class only carries sandbox-local options.
+
+    HTTP-level settings can be provided either on this config (for direct
+    ``SandboxFactory.create_sandbox`` usage) or on
+    :class:`VolcengineSandboxManagerConfig` (when going through the manager,
+    which injects its own values at sandbox creation time).
     """
 
+    # ---- HTTP-level settings (also accepted by SandboxFactory) ----
+    base_url: Optional[str] = Field(
+        None,
+        description='SandboxFusion HTTP service base URL, e.g. http://localhost:8080',
+    )
+    run_code_path: str = Field(
+        '/run_code',
+        description='Path of the run_code endpoint',
+    )
+    request_timeout: float = Field(
+        30.0,
+        description='Per-request HTTP timeout in seconds',
+    )
+    verify_ssl: bool = Field(
+        True,
+        description='Whether to verify SSL certificates',
+    )
+    extra_headers: Optional[Dict[str, str]] = Field(
+        None,
+        description='Extra HTTP headers to attach to every request',
+    )
+    api_key: Optional[str] = Field(
+        None,
+        description='Optional API key; sent as Authorization header',
+    )
+    dataset_language_map: Optional[Dict[str, str]] = Field(
+        None,
+        description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).',
+    )
+
+    # ---- Sandbox-local options ----
     tool_language_map: Dict[
         str,
         str] = Field(default_factory=dict, description='Per-tool language override, e.g. {"shell_executor": "bash"}.')
+
+    @field_validator('base_url')
+    @classmethod
+    def _normalize_base_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.rstrip('/')
+            if not v:
+                raise ValueError('base_url, when provided, must be non-empty')
+        return v
+
+    @field_validator('run_code_path')
+    @classmethod
+    def _normalize_run_code_path(cls, v: str) -> str:
+        return v if v.startswith('/') else f'/{v}'
 
 
 class VolcengineSandboxManagerConfig(SandboxManagerConfig):

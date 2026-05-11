@@ -8,9 +8,9 @@ body). All vendor/protocol specifics live here — the generic plumbing (shared
 
 A :class:`VolcengineSandbox` is normally created by
 :class:`~ms_enclave.sandbox.manager.VolcengineSandboxManager`, which injects
-the shared session and manager-level HTTP settings. It is also registered with
-:class:`SandboxFactory` for introspection, but direct factory creation without
-a ``base_url`` will fail fast in ``StatelessSandbox.__init__``.
+the shared session and manager-level HTTP settings. It is also registered
+with :class:`SandboxFactory` — when created via the factory, HTTP settings
+are read from :class:`VolcengineSandboxConfig`.
 """
 
 from __future__ import annotations
@@ -23,6 +23,13 @@ from ..model import ExecutionStatus, SandboxType, ToolResult, VolcengineSandboxC
 from .base import register_sandbox
 from .stateless_sandbox import StatelessSandbox
 
+# Default language mapping for MINOR_RUNNERS that require capitalised identifiers.
+_DEFAULT_DATASET_LANGUAGE_MAP: Dict[str, str] = {
+    'r': 'R',
+    'd_ut': 'D_ut',
+    'ts': 'typescript',
+}
+
 
 @register_sandbox(SandboxType.VOLCENGINE)
 class VolcengineSandbox(StatelessSandbox):
@@ -34,28 +41,43 @@ class VolcengineSandbox(StatelessSandbox):
         sandbox_id: Optional[str] = None,
         *,
         base_url: Optional[str] = None,
-        run_code_path: str = '/run_code',
-        request_timeout: float = 30.0,
-        verify_ssl: bool = True,
+        run_code_path: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        verify_ssl: Optional[bool] = None,
         extra_headers: Optional[Dict[str, str]] = None,
         api_key: Optional[str] = None,
         dataset_language_map: Optional[Dict[str, str]] = None,
         session: Optional[aiohttp.ClientSession] = None,
     ) -> None:
+        # When explicit kwargs are not provided, fall back to config values.
+        _base_url = base_url if base_url is not None else (config.base_url or '')
+        _run_code_path = run_code_path if run_code_path is not None else config.run_code_path
+        _request_timeout = request_timeout if request_timeout is not None else config.request_timeout
+        _verify_ssl = verify_ssl if verify_ssl is not None else config.verify_ssl
+        _extra_headers = extra_headers if extra_headers is not None else config.extra_headers
+        _api_key = api_key if api_key is not None else config.api_key
+        _dataset_language_map = dataset_language_map if dataset_language_map is not None else config.dataset_language_map
+
         super().__init__(
             config,
-            base_url=base_url or '',
-            request_timeout=request_timeout,
-            verify_ssl=verify_ssl,
-            extra_headers=extra_headers,
-            api_key=api_key,
+            base_url=_base_url,
+            request_timeout=_request_timeout,
+            verify_ssl=_verify_ssl,
+            extra_headers=_extra_headers,
+            api_key=_api_key,
             session=session,
             sandbox_id=sandbox_id,
         )
         # Convenient reference to the typed sandbox config for tool dispatch.
         self.config: VolcengineSandboxConfig = config
-        self._run_code_path: str = run_code_path if run_code_path.startswith('/') else f'/{run_code_path}'
-        self._dataset_language_map: Dict[str, str] = (dict(dataset_language_map) if dataset_language_map else {})
+        self._run_code_path: str = _run_code_path if _run_code_path.startswith('/') else f'/{_run_code_path}'
+        # Merge user-provided map on top of the defaults so that explicit
+        # entries take precedence, but MINOR_RUNNERS (r, d_ut, …) get their
+        # required capitalisation even when the caller supplies nothing.
+        _merged = dict(_DEFAULT_DATASET_LANGUAGE_MAP)
+        if _dataset_language_map:
+            _merged.update(_dataset_language_map)
+        self._dataset_language_map: Dict[str, str] = _merged
 
     @property
     def sandbox_type(self) -> SandboxType:

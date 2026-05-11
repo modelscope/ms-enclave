@@ -268,6 +268,12 @@ class VolcengineSandboxManager(SandboxManager):
         _ = timeout  # the semaphore + HTTP timeout already bound wait time
         if not self._sandboxes:
             await self.initialize_pool()
+        if not self._sandboxes:
+            raise RuntimeError(
+                'No sandbox available after pool initialization. '
+                'Ensure the VolcEngine backend is reachable at '
+                f'{self.config.base_url}.'
+            )
         # Any sandbox works — pick the first one.
         sandbox_id = next(iter(self._sandboxes))
         return await self.execute_tool(sandbox_id, tool_name, parameters)

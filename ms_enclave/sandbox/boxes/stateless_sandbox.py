@@ -24,13 +24,13 @@ as :class:`~ms_enclave.sandbox.boxes.volcengine.VolcengineSandbox`.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 
 from ms_enclave.utils import get_logger
 
-from ..model import SandboxConfig, SandboxStatus
+from ..model import CommandResult, SandboxConfig, SandboxStatus
 from .base import Sandbox
 
 logger = get_logger()
@@ -128,7 +128,9 @@ class StatelessSandbox(Sandbox):
         """Tools receive the sandbox itself as the execution context."""
         return self
 
-    async def execute_command(self, command, timeout=None, stream=True):  # type: ignore[override]
+    async def execute_command(
+        self, command: Union[str, List[str]], timeout: Optional[int] = None, stream: bool = True
+    ) -> CommandResult:
         raise NotImplementedError('stateless sandbox does not support execute_command')
 
     # --------------------------------------------------------------------- #

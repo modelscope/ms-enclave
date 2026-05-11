@@ -1,5 +1,6 @@
 """Shell command execution tool."""
 
+import shlex
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ms_enclave.sandbox.model import ExecutionStatus, SandboxType, ToolResult
@@ -54,7 +55,7 @@ class ShellExecutor(SandboxTool):
         if sbx_type == SandboxType.VOLCENGINE:
             try:
                 volcengine: 'VolcengineSandbox' = sandbox_context  # type: ignore[assignment]
-                cmd_str = command if isinstance(command, str) else ' '.join(command)
+                cmd_str = command if isinstance(command, str) else shlex.join(command)
                 resp = await volcengine.run_code(cmd_str, language='bash', timeout=timeout)
                 return volcengine.build_tool_result(self.name, resp)
             except Exception as e:
