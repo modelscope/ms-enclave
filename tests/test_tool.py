@@ -25,7 +25,7 @@ class TestToolFactory(unittest.TestCase):
         self.assertEqual(tool.name, 'python_executor')
         self.assertIsNotNone(tool.description)
         self.assertIsNotNone(tool.schema)
-        self.assertEqual(tool.required_sandbox_type, SandboxType.DOCKER)
+        self.assertEqual(tool.required_sandbox_types, [SandboxType.DOCKER, SandboxType.VOLCENGINE])
 
     def test_create_unknown_tool_raises_error(self):
         """Test that creating unknown tool raises appropriate error."""

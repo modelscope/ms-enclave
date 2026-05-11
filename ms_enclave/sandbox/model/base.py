@@ -20,6 +20,7 @@ class SandboxType(str, Enum):
     """Sandbox type enumeration."""
     DOCKER = 'docker'
     DOCKER_NOTEBOOK = 'docker_notebook'
+    VOLCENGINE = 'volcengine'
     DUMMY = 'dummy'
 
     @classmethod
@@ -38,9 +39,11 @@ class SandboxType(str, Enum):
         """
         # Define inheritance hierarchy: child -> parents
         # DOCKER_NOTEBOOK inherits from DOCKER (can use DOCKER tools)
+        # VOLCENGINE is a standalone stateless remote sandbox (no inheritance)
         inheritance_map = {
             cls.DOCKER: {cls.DOCKER},
             cls.DOCKER_NOTEBOOK: {cls.DOCKER_NOTEBOOK, cls.DOCKER},
+            cls.VOLCENGINE: {cls.VOLCENGINE},
         }
 
         return inheritance_map.get(sandbox_type, {sandbox_type})
@@ -65,6 +68,7 @@ class SandboxManagerType(str, Enum):
     """Sandbox manager type enumeration."""
     LOCAL = 'local'
     HTTP = 'http'
+    VOLCENGINE = 'volcengine'
 
 
 class ToolType(str, Enum):

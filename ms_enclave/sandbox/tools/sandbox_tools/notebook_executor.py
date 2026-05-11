@@ -21,7 +21,7 @@ logger = get_logger()
 class NotebookExecutor(SandboxTool):
 
     _name = 'notebook_executor'
-    _sandbox_type = SandboxType.DOCKER_NOTEBOOK
+    _sandbox_types = [SandboxType.DOCKER_NOTEBOOK]
     _description = 'Execute Python code in a Jupyter kernel environment'
     _parameters = ToolParams(
         type='object',

@@ -29,18 +29,18 @@ Tips:
 ## Custom Tool
 
 Implement/override:
-- `required_sandbox_type`: declare compatible sandbox type (return `None` for any).
+- `required_sandbox_types`: declare compatible sandbox types (return `None` for any).
 - `async def execute(self, sandbox_context, **kwargs)`: implement tool logic and return `ToolResult`.
 - Optional constructor args: `name/description/parameters/enabled/timeout`. If no params are needed, you may omit `parameters`.
 
 Notes:
 - The framework exposes an OpenAI-style function schema via `Tool.schema`. For strict validation, pass a Pydantic model via `parameters` (see `tools/tool_info.py`).
-- Compatibility is checked by `Tool.is_compatible_with_sandbox` using `required_sandbox_type` plus `SandboxType.is_compatible`.
+- Compatibility is checked by `Tool.is_compatible_with_sandbox` using `required_sandbox_types` plus `SandboxType.is_compatible`.
 
 ### Example A: Minimal tool (no sandbox command)
 
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from ms_enclave.sandbox.tools.base import Tool, register_tool
 from ms_enclave.sandbox.model import SandboxType
 
@@ -50,7 +50,7 @@ class HelloTool(Tool):
         super().__init__(name=name, description=description, enabled=enabled)
 
     @property
-    def required_sandbox_type(self) -> Optional[SandboxType]:
+    def required_sandbox_types(self) -> Optional[List[SandboxType]]:
         return None
 
     async def execute(self, sandbox_context: Any, name: str = 'world', **kwargs) -> Dict[str, Any]:
@@ -76,7 +76,7 @@ asyncio.run(main())
 ### Example B: Prefer in-sandbox command with local fallback
 
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from ms_enclave.sandbox.tools.base import Tool, register_tool
 from ms_enclave.sandbox.model import SandboxType
@@ -87,8 +87,8 @@ class TimeTellerTool(Tool):
         super().__init__(name=name, description=description, enabled=enabled)
 
     @property
-    def required_sandbox_type(self) -> Optional[SandboxType]:
-        return SandboxType.DOCKER
+    def required_sandbox_types(self) -> Optional[List[SandboxType]]:
+        return [SandboxType.DOCKER]
 
     async def execute(self, sandbox_context: Any, timezone_name: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         cmd = 'date'
@@ -383,7 +383,7 @@ asyncio.run(main())
   - Only execute tools when status is `SandboxStatus.RUNNING`.
   - Call `await self.initialize_tools()` in `start()`.
 - Compatibility:
-  - Tools should declare `required_sandbox_type`; return `None` if no restriction.
+  - Tools should declare `required_sandbox_types`; return `None` if no restriction.
   - `SandboxType.is_compatible` enables subtypes to reuse parent tools (e.g., `DOCKER_NOTEBOOK` with `DOCKER`).
 - Parameter schema:
   - Pass a Pydantic model via `parameters` for validation and documentation. Otherwise, `parameters` defaults to `{}`.

@@ -17,6 +17,7 @@ from ..model import (
     SandboxStatus,
     SandboxType,
     ToolResult,
+    VolcengineSandboxConfig,
 )
 from ..tools import Tool, ToolFactory
 
@@ -100,7 +101,7 @@ class Sandbox(abc.ABC):
                 self._tools[tool.name] = tool
             else:
                 logger.warning(
-                    f"Tool '{tool.name}' requires sandbox type '{tool.required_sandbox_type}' "
+                    f"Tool '{tool.name}' requires sandbox types '{tool.required_sandbox_types}' "
                     f"but this is a '{self.sandbox_type}' sandbox. "
                     f'Compatible types: {SandboxType.get_compatible_types(self.sandbox_type)}'
                 )
@@ -237,6 +238,8 @@ class SandboxFactory:
                 config = DockerSandboxConfig()
             elif sandbox_type == SandboxType.DOCKER_NOTEBOOK:
                 config = DockerNotebookConfig()
+            elif sandbox_type == SandboxType.VOLCENGINE:
+                config = VolcengineSandboxConfig()
             else:
                 config = SandboxConfig()
         elif isinstance(config, dict):
@@ -244,6 +247,8 @@ class SandboxFactory:
                 config = DockerSandboxConfig(**config)
             elif sandbox_type == SandboxType.DOCKER_NOTEBOOK:
                 config = DockerNotebookConfig(**config)
+            elif sandbox_type == SandboxType.VOLCENGINE:
+                config = VolcengineSandboxConfig(**config)
             else:
                 config = SandboxConfig(**config)
 
