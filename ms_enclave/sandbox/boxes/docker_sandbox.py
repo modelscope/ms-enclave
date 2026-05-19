@@ -2,7 +2,8 @@
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Union
 
 import docker
 from docker import DockerClient
@@ -15,6 +16,8 @@ from ..model import CommandResult, DockerSandboxConfig, ExecutionStatus, Sandbox
 from .base import Sandbox, register_sandbox
 
 logger = get_logger()
+
+_QUEUE_SENTINEL = object()
 
 
 @register_sandbox(SandboxType.DOCKER)
@@ -32,11 +35,20 @@ class DockerSandbox(Sandbox):
         self.config: DockerSandboxConfig = config
         self.client: Optional[DockerClient] = None
         self.container: Optional[Container] = None
+        self._executor: ThreadPoolExecutor = ThreadPoolExecutor(
+            max_workers=config.docker_executor_workers,
+            thread_name_prefix=f'docker-sb-{self.id[:8]}',
+        )
 
     @property
     def sandbox_type(self) -> SandboxType:
         """Return sandbox type."""
         return SandboxType.DOCKER
+
+    async def _run_blocking(self, func: Callable, *args, **kwargs):
+        """Run a blocking docker SDK call on the dedicated thread pool."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, lambda: func(*args, **kwargs))
 
     async def start(self) -> None:
         """Start the Docker container."""
@@ -97,7 +109,7 @@ class DockerSandbox(Sandbox):
         """
         if self.container:
             try:
-                self.container.remove(force=True)
+                await self._run_blocking(self.container.remove, force=True)
                 logger.debug(f'Container {self.container.id} removed')
             except Exception as e:
                 logger.error(f'Error cleaning up container: {e}')
@@ -108,20 +120,26 @@ class DockerSandbox(Sandbox):
         # Close Docker client only if we dropped the container reference
         if self.client:
             try:
-                self.client.close()
+                await self._run_blocking(self.client.close)
             except Exception as e:
                 logger.warning(f'Error closing Docker client: {e}')
             finally:
                 self.client = None
+
+        # Tear down the dedicated thread pool last so the calls above can use it.
+        try:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f'Error shutting down docker executor: {e}')
 
     async def stop_container(self) -> None:
         """Stop the container if it is running."""
         if not self.container:
             return
         try:
-            self.container.reload()
+            await self._run_blocking(self.container.reload)
             if self.container.status == SandboxStatus.RUNNING:
-                self.container.stop(timeout=10)
+                await self._run_blocking(self.container.stop, timeout=10)
         except NotFound:
             logger.warning('Container not found while stopping')
         except Exception as e:
@@ -132,49 +150,44 @@ class DockerSandbox(Sandbox):
         """Return the container for tool execution."""
         return self.container
 
-    def _run_streaming(self, command: Union[str, List[str]]) -> tuple[int, str, str]:
-        """Execute command with streaming logs using low-level API.
+    async def _aiter_exec_output(self, exec_id: str) -> AsyncIterator[Tuple[Optional[bytes], Optional[bytes]]]:
+        """Bridge ``exec_start(stream=True)`` chunks from a worker thread to async.
 
-        Returns:
-            A tuple of (exit_code, stdout, stderr)
+        The producer thread iterates the blocking docker generator and pushes each
+        (stdout, stderr) tuple onto an unbounded ``asyncio.Queue``. The async caller
+        consumes the queue. When the caller stops iterating (cancel/timeout), it is
+        responsible for invoking ``exec_kill`` so the producer's iterator unblocks.
         """
-        if not self.client or not self.container:
-            raise RuntimeError('Container is not running')
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
 
-        # Use low-level API for precise control over streaming and exit code.
-        exec_id = self.client.api.exec_create(
-            container=self.container.id,
-            cmd=command,
-            tty=False,
-        )['Id']
+        def _producer():
+            try:
+                for chunk in self.client.api.exec_start(exec_id, stream=True, demux=True):
+                    loop.call_soon_threadsafe(queue.put_nowait, chunk)
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, _QUEUE_SENTINEL)
 
-        stdout_parts: List[str] = []
-        stderr_parts: List[str] = []
+        self._executor.submit(_producer)
 
+        while True:
+            item = await queue.get()
+            if item is _QUEUE_SENTINEL:
+                return
+            if isinstance(item, Exception):
+                raise item
+            yield item
+
+    async def _kill_exec_safe(self, exec_id: str) -> None:
+        """Best-effort exec_kill so the producer iterator unblocks."""
         try:
-            for chunk in self.client.api.exec_start(exec_id, stream=True, demux=True):
-                if not chunk:
-                    continue
-                out, err = chunk  # each is Optional[bytes]
-                if out:
-                    text = out.decode('utf-8', errors='replace')
-                    stdout_parts.append(text)
-                    for line in text.splitlines():
-                        logger.info(f'[📦 {self.id}] {line}')
-                if err:
-                    text = err.decode('utf-8', errors='replace')
-                    stderr_parts.append(text)
-                    for line in text.splitlines():
-                        logger.error(f'[📦 {self.id}] {line}')
-        finally:
-            inspect = self.client.api.exec_inspect(exec_id)
-            exit_code = inspect.get('ExitCode')
-            if exit_code is None:
-                exit_code = -1
+            await self._run_blocking(self.client.api.exec_kill, exec_id, 'SIGKILL')
+        except Exception as e:
+            logger.debug(f'exec_kill failed (likely already finished): {e}')
 
-        return exit_code, ''.join(stdout_parts), ''.join(stderr_parts)
-
-    def _run_buffered(self, command: Union[str, List[str]]) -> tuple[int, str, str]:
+    def _run_buffered(self, command: Union[str, List[str]]) -> Tuple[int, str, str]:
         """Execute command and return buffered output using high-level API.
 
         Returns:
@@ -215,36 +228,206 @@ class DockerSandbox(Sandbox):
         if not self.container or not self.client:
             raise RuntimeError('Container is not running')
 
-        loop = asyncio.get_running_loop()
+        if not stream:
+            try:
+                exit_code, stdout, stderr = await asyncio.wait_for(
+                    self._run_blocking(self._run_buffered, command), timeout=timeout
+                )
+                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+                return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
+            except asyncio.TimeoutError:
+                return CommandResult(
+                    command=command,
+                    status=ExecutionStatus.TIMEOUT,
+                    exit_code=-1,
+                    stdout='',
+                    stderr=f'Command timed out after {timeout} seconds',
+                )
+            except Exception as e:
+                return CommandResult(
+                    command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
+                )
 
-        run_func = self._run_streaming if stream else self._run_buffered
+        # Streaming path: keep exec_id so we can exec_kill on cancel/timeout.
+        exec_meta = await self._run_blocking(
+            self.client.api.exec_create, container=self.container.id, cmd=command, tty=False
+        )
+        exec_id = exec_meta['Id']
+
+        stdout_parts: List[str] = []
+        stderr_parts: List[str] = []
+
+        async def _consume() -> None:
+            async for out, err in self._aiter_exec_output(exec_id):
+                if out:
+                    text = out.decode('utf-8', errors='replace')
+                    stdout_parts.append(text)
+                    for line in text.splitlines():
+                        logger.info(f'[📦 {self.id}] {line}')
+                if err:
+                    text = err.decode('utf-8', errors='replace')
+                    stderr_parts.append(text)
+                    for line in text.splitlines():
+                        logger.error(f'[📦 {self.id}] {line}')
+
         try:
-            exit_code, stdout, stderr = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: run_func(command)), timeout=timeout
-            )
+            await asyncio.wait_for(_consume(), timeout=timeout)
+            inspect = await self._run_blocking(self.client.api.exec_inspect, exec_id)
+            exit_code = inspect.get('ExitCode')
+            if exit_code is None:
+                exit_code = -1
             status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
-            return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
+            return CommandResult(
+                command=command,
+                status=status,
+                exit_code=exit_code,
+                stdout=''.join(stdout_parts),
+                stderr=''.join(stderr_parts),
+            )
         except asyncio.TimeoutError:
+            await self._kill_exec_safe(exec_id)
             return CommandResult(
                 command=command,
                 status=ExecutionStatus.TIMEOUT,
                 exit_code=-1,
-                stdout='',
-                stderr=f'Command timed out after {timeout} seconds'
+                stdout=''.join(stdout_parts),
+                stderr=f'Command timed out after {timeout} seconds',
             )
+        except asyncio.CancelledError:
+            await self._kill_exec_safe(exec_id)
+            raise
         except Exception as e:
-            return CommandResult(command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e))
+            await self._kill_exec_safe(exec_id)
+            return CommandResult(
+                command=command,
+                status=ExecutionStatus.ERROR,
+                exit_code=-1,
+                stdout=''.join(stdout_parts),
+                stderr=str(e),
+            )
 
     async def _ensure_image_exists(self) -> None:
         """Ensure Docker image exists."""
         try:
-            self.client.images.get(self.config.image)
+            await self._run_blocking(self.client.images.get, self.config.image)
+            return
         except ImageNotFound:
-            # Try to pull the image
+            pass
+
+        try:
+            if self.config.pull_progress:
+                await self._pull_image_with_progress()
+            else:
+                await self._run_blocking(self.client.images.pull, self.config.image)
+        except Exception as e:
+            raise RuntimeError(f'Failed to pull image {self.config.image}: {e}')
+
+    async def _aiter_pull_events(self, repo: str, tag: str) -> AsyncIterator[Dict[str, Any]]:
+        """Bridge ``client.api.pull(stream=True, decode=True)`` events to async.
+
+        Note: docker SDK does not expose a way to abort an in-flight pull. If the
+        async caller is cancelled, the worker thread will continue draining the
+        HTTP response until the pull completes or the connection breaks.
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def _producer():
             try:
-                self.client.images.pull(self.config.image)
+                for evt in self.client.api.pull(repo, tag=tag, stream=True, decode=True):
+                    loop.call_soon_threadsafe(queue.put_nowait, evt)
             except Exception as e:
-                raise RuntimeError(f'Failed to pull image {self.config.image}: {e}')
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, _QUEUE_SENTINEL)
+
+        self._executor.submit(_producer)
+
+        while True:
+            item = await queue.get()
+            if item is _QUEUE_SENTINEL:
+                return
+            if isinstance(item, Exception):
+                raise item
+            yield item
+
+    async def _pull_image_with_progress(self) -> None:
+        """Stream pull progress and log periodic aggregates.
+
+        Aggregates per-layer Downloading/Extracting bytes and emits one summary
+        line every ``pull_progress_interval`` seconds. Final line shows totals.
+        """
+        ref = self.config.image
+        if ':' in ref and '/' not in ref.rsplit(':', 1)[1]:
+            repo, tag = ref.rsplit(':', 1)
+        else:
+            repo, tag = ref, 'latest'
+
+        interval = float(self.config.pull_progress_interval)
+        layers: Dict[str, Dict[str, Any]] = {}
+        last_log = time.time()
+        start = last_log
+        logger.info(f'Pulling image {ref} (streaming progress every {interval:.1f}s)...')
+
+        def _fmt_bytes(n: float) -> str:
+            for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+                if n < 1024.0:
+                    return f'{n:.1f}{unit}'
+                n /= 1024.0
+            return f'{n:.1f}PB'
+
+        def _emit(final: bool = False) -> None:
+            dl_cur = sum(l.get('dl_cur', 0) for l in layers.values())
+            dl_tot = sum(l.get('dl_tot', 0) for l in layers.values())
+            ex_cur = sum(l.get('ex_cur', 0) for l in layers.values())
+            ex_tot = sum(l.get('ex_tot', 0) for l in layers.values())
+            done = sum(1 for l in layers.values() if l.get('done'))
+            elapsed = time.time() - start
+            prefix = '[pull done]' if final else '[pull]'
+            logger.info(
+                f'{prefix} {ref} layers={done}/{len(layers)} '
+                f'download={_fmt_bytes(dl_cur)}/{_fmt_bytes(dl_tot)} '
+                f'extract={_fmt_bytes(ex_cur)}/{_fmt_bytes(ex_tot)} '
+                f'elapsed={elapsed:.1f}s'
+            )
+
+        async for evt in self._aiter_pull_events(repo, tag):
+            if 'error' in evt:
+                raise RuntimeError(evt['error'])
+            lid = evt.get('id')
+            status = evt.get('status', '')
+            if not lid or ':' in lid:  # skip overall status / digest lines
+                continue
+            layer = layers.setdefault(lid, {})
+            pd = evt.get('progressDetail') or {}
+            cur = pd.get('current')
+            tot = pd.get('total')
+            if status.startswith('Downloading'):
+                if cur is not None:
+                    layer['dl_cur'] = cur
+                if tot:
+                    layer['dl_tot'] = tot
+            elif status.startswith('Extracting'):
+                if cur is not None:
+                    layer['ex_cur'] = cur
+                if tot:
+                    layer['ex_tot'] = tot
+            elif status in ('Download complete', 'Pull complete', 'Already exists'):
+                if 'dl_tot' in layer:
+                    layer['dl_cur'] = layer['dl_tot']
+                if 'ex_tot' in layer:
+                    layer['ex_cur'] = layer['ex_tot']
+                if status in ('Pull complete', 'Already exists'):
+                    layer['done'] = True
+
+            now = time.time()
+            if interval > 0 and now - last_log >= interval:
+                _emit()
+                last_log = now
+
+        for layer in layers.values():
+            layer['done'] = True
+        _emit(final=True)
 
     async def _create_container(self) -> None:
         """Create Docker container."""
@@ -289,8 +472,8 @@ class DockerSandbox(Sandbox):
             # Privileged mode
             container_config['privileged'] = self.config.privileged
 
-            # Create container
-            self.container = self.client.containers.create(**container_config)
+            # Create container (run sync docker SDK off the event loop)
+            self.container = await self._run_blocking(self.client.containers.create, **container_config)
             self.metadata['container_id'] = self.container.id
 
         except Exception as e:
@@ -299,14 +482,14 @@ class DockerSandbox(Sandbox):
     async def _start_container(self) -> None:
         """Start Docker container."""
         try:
-            self.container.start()
+            await self._run_blocking(self.container.start)
 
             # Wait for container to be ready
             timeout = 30
             start_time = time.time()
 
             while time.time() - start_time < timeout:
-                self.container.reload()
+                await self._run_blocking(self.container.reload)
                 if self.container.status == 'running':
                     break
                 await asyncio.sleep(0.5)

@@ -70,6 +70,17 @@ class DockerSandboxConfig(SandboxConfig):
     network_enabled: bool = Field(default=True, description='Enable network access')
     privileged: bool = Field(default=False, description='Run in privileged mode')
     remove_on_exit: bool = Field(default=True, description='Remove container on exit')
+    pull_progress: bool = Field(
+        default=False,
+        description='If True, stream image pull progress to the logger (aggregated every pull_progress_interval seconds).'
+    )
+    pull_progress_interval: float = Field(
+        default=3.0,
+        description='Seconds between aggregated pull-progress log lines (only used when pull_progress=True).'
+    )
+    docker_executor_workers: int = Field(
+        default=8, description='Max worker threads in the dedicated thread pool used for blocking docker SDK calls.'
+    )
 
     @field_validator('memory_limit')
     def validate_memory_limit(cls, v):
