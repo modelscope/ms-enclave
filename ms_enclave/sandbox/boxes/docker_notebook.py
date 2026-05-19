@@ -166,7 +166,7 @@ class DockerNotebookSandbox(DockerSandbox):
                         logger.error(f"[📦 {self.id}] {log['error']}")
                 return build_logs[0]  # Return the built image
 
-            await asyncio.get_event_loop().run_in_executor(None, build_image)
+            await self._run_blocking(build_image)
 
     async def _create_kernel(self) -> None:
         """Create a new kernel and establish websocket connection."""

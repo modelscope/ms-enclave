@@ -3,7 +3,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
 
 from ..model import (
     SandboxConfig,
@@ -235,7 +235,7 @@ class SandboxManagerFactory:
         cls,
         manager_type: Optional[SandboxManagerType] = None,
         config: Optional[SandboxManagerConfig] = None,
-        **kwargs
+        **kwargs: Any
     ) -> SandboxManager:
         """Create a sandbox manager instance.
 
@@ -276,7 +276,7 @@ class SandboxManagerFactory:
         return list(cls._registry.keys())
 
 
-def register_manager(manager_type: SandboxManagerType):
+def register_manager(manager_type: SandboxManagerType) -> Callable[..., type]:
     """Decorator to register a sandbox manager class.
 
     Args:

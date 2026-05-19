@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="doc/asset/image/logo.png"/>
+    <img src="docs/asset/image/logo.png"/>
     <br>
 <p>
 
@@ -14,6 +14,14 @@
 <a href="https://pypi.org/project/ms-enclave"><img alt="PyPI - Downloads" src="https://static.pepy.tech/badge/ms-enclave"></a>
 <a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
 <p>
+
+<p align="center">
+<a href="https://ms-enclave.readthedocs.io/zh-cn/latest"> 📖  中文文档</a> &nbsp ｜ &nbsp <a href="https://ms-enclave.readthedocs.io/en/latest/"> 📖  English Documents</a>
+<p>
+
+
+> ⭐ 如果你喜欢这个项目，请点击右上角的 "Star" 按钮支持我们。你的支持是我们前进的动力！
+
 
 ## 简介
 
@@ -85,6 +93,53 @@ async def main():
 
 asyncio.run(main())
 ```
+
+---
+
+## Agent 模型工具调用（OpenAI Tools）
+
+将沙箱工具以 OpenAI Tools 形式暴露给 Agent，模型触发工具后在沙箱中安全执行。
+
+````python
+import asyncio, os, json
+from openai import OpenAI
+from ms_enclave.sandbox.manager import SandboxManagerFactory
+from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
+
+async def demo():
+    client = OpenAI(
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key=os.getenv("DASHSCOPE_API_KEY")
+    )
+    async with SandboxManagerFactory.create_manager() as m:
+        cfg = DockerSandboxConfig(image="python:3.11-slim", tools_config={"python_executor": {}, "shell_executor": {}})
+        sid = await m.create_sandbox(SandboxType.DOCKER, cfg)
+
+        tools = list((await m.get_sandbox_tools(sid)).values())
+        messages = [{"role": "user", "content": "Print 'hello' in Python, then list /sandbox via shell."}]
+
+        rsp = client.chat.completions.create(model="qwen-plus", messages=messages, tools=tools, tool_choice="auto")
+        msg = rsp.choices[0].message
+        messages.append(msg.model_dump())
+
+        if getattr(msg, "tool_calls", None):
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                args = json.loads(tc.function.arguments or "{}")
+                result = await m.execute_tool(sid, name, args)
+                messages.append({"role": "tool", "content": result.model_dump_json(), "tool_call_id": tc.id, "name": name})
+            final = client.chat.completions.create(model="qwen-plus", messages=messages)
+            print(final.choices[0].message.content or "")
+        else:
+            print(msg.content or "")
+
+asyncio.run(demo())
+````
+
+说明：
+- 使用 `get_sandbox_tools(sandbox_id)` 获取工具 schema（OpenAI 兼容）
+- 将 `tools=...` 传入模型，处理返回的 `tool_calls` 并在沙箱执行
+- 再次调用模型生成最终答案
 
 ---
 
@@ -324,7 +379,7 @@ asyncio.run(main())
 工具加载规则：
 
 - 仅当在 `tools_config` 中显式声明时，工具才会初始化并可用
-- 工具会校验 `required_sandbox_type`，不匹配则自动忽略
+- 工具会校验 `required_sandbox_types`，不匹配则自动忽略
 
 示例：
 

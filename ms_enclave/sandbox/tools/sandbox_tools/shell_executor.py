@@ -1,5 +1,6 @@
 """Shell command execution tool."""
 
+import shlex
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ms_enclave.sandbox.model import ExecutionStatus, SandboxType, ToolResult
@@ -8,14 +9,14 @@ from ms_enclave.sandbox.tools.sandbox_tool import SandboxTool
 from ms_enclave.sandbox.tools.tool_info import ToolParams
 
 if TYPE_CHECKING:
-    from ms_enclave.sandbox.boxes import Sandbox
+    from ms_enclave.sandbox.boxes import Sandbox, VolcengineSandbox
 
 
 @register_tool('shell_executor')
 class ShellExecutor(SandboxTool):
 
     _name = 'shell_executor'
-    _sandbox_type = SandboxType.DOCKER
+    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
     _description = 'Execute shell commands in an isolated environment'
     _parameters = ToolParams(
         type='object',
@@ -48,6 +49,20 @@ class ShellExecutor(SandboxTool):
 
         if not command or (isinstance(command, str) and not command.strip()):
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No command provided')
+
+        # Stateless remote sandbox: route through /run_code with bash language.
+        sbx_type = getattr(sandbox_context, 'sandbox_type', None)
+        if sbx_type == SandboxType.VOLCENGINE:
+            try:
+                volcengine: 'VolcengineSandbox' = sandbox_context  # type: ignore[assignment]
+                cmd_str = command if isinstance(command, str) else shlex.join(command)
+                resp = await volcengine.run_code(cmd_str, language='bash', timeout=timeout)
+                return volcengine.build_tool_result(self.name, resp)
+            except Exception as e:
+                return ToolResult(
+                    tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Execution failed: {str(e)}'
+                )
+
         try:
             result = await sandbox_context.execute_command(command, timeout=timeout)
 
