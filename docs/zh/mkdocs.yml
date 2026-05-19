@@ -7,17 +7,30 @@ repo_url: https://github.com/modelscope/ms-enclave
 edit_uri: edit/main/docs/zh/docs/
 
 nav:
-  - 快速开始: 
-    - 介绍: index.md
+  - 首页: index.md
+  - 入门:
     - 安装: getting-started/installation.md
-    - 上手示例: getting-started/quickstart.md
-  - 核心概念: 
-    - basic/concepts.md
-  - 基础使用: 
-    - basic/usage.md
-  - 进阶教程:
-    - HTTP 服务: advanced/server.md
-    - 自定义扩展: advanced/customization.md
+    - 5 分钟上手: getting-started/quickstart.md
+    - 核心概念: getting-started/concepts.md
+  - 使用指南:
+    - 概览与入口选择: guides/index.md
+    - 直接使用沙箱: guides/sandbox-factory.md
+    - 本地管理器: guides/local-manager.md
+    - 沙箱池: guides/sandbox-pool.md
+    - 内置工具: guides/builtin-tools.md
+    - 安装第三方依赖: guides/install-deps.md
+    - 挂载宿主机目录: guides/host-volumes.md
+    - Notebook 沙箱: guides/notebook-sandbox.md
+    - 接入 LLM Agent: guides/agent-integration.md
+  - 部署:
+    - HTTP 服务: deployment/http-server.md
+    - HTTP 客户端: deployment/http-client.md
+    - Volcengine 云沙箱: deployment/volcengine.md
+  - 扩展开发:
+    - 注册机制总览: extending/index.md
+    - 自定义 Tool: extending/custom-tool.md
+    - 自定义 Sandbox: extending/custom-sandbox.md
+    - 自定义 SandboxManager: extending/custom-manager.md
   - API 参考:
     - 概览: api/index.md
     - 管理器: api/manager.md
@@ -25,6 +38,7 @@ nav:
     - 工具: api/tools.md
     - 配置: api/config.md
     - 数据模型: api/models.md
+  - 常见问题: faq.md
 
 theme:
   name: material

@@ -7,17 +7,30 @@ repo_url: https://github.com/modelscope/ms-enclave
 edit_uri: edit/main/docs/en/docs/
 
 nav:
-  - Quick Start:
-    - Introduction: index.md
+  - Home: index.md
+  - Getting Started:
     - Installation: getting-started/installation.md
-    - Quickstart: getting-started/quickstart.md
-  - Core Concepts:
-    - basic/concepts.md
-  - Basic Usage:
-    - basic/usage.md
-  - Advanced:
-    - HTTP Server: advanced/server.md
-    - Customization: advanced/customization.md
+    - 5-Minute Quickstart: getting-started/quickstart.md
+    - Core Concepts: getting-started/concepts.md
+  - Guides:
+    - Overview & Entry Choice: guides/index.md
+    - Using a Sandbox Directly: guides/sandbox-factory.md
+    - Local Manager: guides/local-manager.md
+    - Sandbox Pool: guides/sandbox-pool.md
+    - Built-in Tools: guides/builtin-tools.md
+    - Installing Dependencies: guides/install-deps.md
+    - Mounting Host Directories: guides/host-volumes.md
+    - Notebook Sandbox: guides/notebook-sandbox.md
+    - LLM Agent Integration: guides/agent-integration.md
+  - Deployment:
+    - HTTP Server: deployment/http-server.md
+    - HTTP Client: deployment/http-client.md
+    - Volcengine Cloud Sandbox: deployment/volcengine.md
+  - Extending:
+    - Registration Overview: extending/index.md
+    - Custom Tool: extending/custom-tool.md
+    - Custom Sandbox: extending/custom-sandbox.md
+    - Custom SandboxManager: extending/custom-manager.md
   - API Reference:
     - Overview: api/index.md
     - Manager: api/manager.md
@@ -25,6 +38,7 @@ nav:
     - Tools: api/tools.md
     - Configuration: api/config.md
     - Data Models: api/models.md
+  - FAQ: faq.md
 
 theme:
   name: material
