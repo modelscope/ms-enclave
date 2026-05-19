@@ -65,8 +65,13 @@ class DockerSandboxConfig(SandboxConfig):
     )
     ports: Dict[str, Union[int, str, Tuple[str, int]]] = Field(default_factory=dict, description='Port mappings')
     network: Optional[str] = Field('bridge', description='Network name')
-    memory_limit: str = Field(default='1g', description='Memory limit')
-    cpu_limit: float = Field(default=1.0, description='CPU limit')
+    platform: Optional[str] = Field(
+        default=None,
+        description='Docker platform (e.g. "linux/amd64"). Required when the image arch differs from the host '
+        '(e.g. amd64 image on Apple Silicon).'
+    )
+    memory_limit: str = Field(default='4g', description='Memory limit')
+    cpu_limit: float = Field(default=2.0, description='CPU limit')
     network_enabled: bool = Field(default=True, description='Enable network access')
     privileged: bool = Field(default=False, description='Run in privileged mode')
     remove_on_exit: bool = Field(default=True, description='Remove container on exit')

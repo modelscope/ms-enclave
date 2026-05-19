@@ -23,6 +23,8 @@ nav:
     - 管理器: api/manager.md
     - 沙箱: api/sandbox.md
     - 工具: api/tools.md
+    - 配置: api/config.md
+    - 数据模型: api/models.md
 
 theme:
   name: material

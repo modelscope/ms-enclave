@@ -23,6 +23,8 @@ nav:
     - Manager: api/manager.md
     - Sandbox: api/sandbox.md
     - Tools: api/tools.md
+    - Configuration: api/config.md
+    - Data Models: api/models.md
 
 theme:
   name: material

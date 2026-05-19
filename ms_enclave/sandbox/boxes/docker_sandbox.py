@@ -315,10 +315,13 @@ class DockerSandbox(Sandbox):
             pass
 
         try:
+            pull_kwargs: Dict[str, Any] = {}
+            if self.config.platform:
+                pull_kwargs['platform'] = self.config.platform
             if self.config.pull_progress:
                 await self._pull_image_with_progress()
             else:
-                await self._run_blocking(self.client.images.pull, self.config.image)
+                await self._run_blocking(self.client.images.pull, self.config.image, **pull_kwargs)
         except Exception as e:
             raise RuntimeError(f'Failed to pull image {self.config.image}: {e}')
 
@@ -334,7 +337,10 @@ class DockerSandbox(Sandbox):
 
         def _producer():
             try:
-                for evt in self.client.api.pull(repo, tag=tag, stream=True, decode=True):
+                pull_kwargs: Dict[str, Any] = {'stream': True, 'decode': True}
+                if self.config.platform:
+                    pull_kwargs['platform'] = self.config.platform
+                for evt in self.client.api.pull(repo, tag=tag, **pull_kwargs):
                     loop.call_soon_threadsafe(queue.put_nowait, evt)
             except Exception as e:
                 loop.call_soon_threadsafe(queue.put_nowait, e)
@@ -471,6 +477,10 @@ class DockerSandbox(Sandbox):
 
             # Privileged mode
             container_config['privileged'] = self.config.privileged
+
+            # Platform (e.g. linux/amd64 for amd64 images on Apple Silicon)
+            if self.config.platform:
+                container_config['platform'] = self.config.platform
 
             # Create container (run sync docker SDK off the event loop)
             self.container = await self._run_blocking(self.client.containers.create, **container_config)
