@@ -475,6 +475,11 @@ class DockerSandbox(Sandbox):
             elif self.config.network:
                 container_config['network'] = self.config.network
 
+            # Extra /etc/hosts entries (e.g. host.docker.internal -> host-gateway
+            # on Linux so containerised agents can reach services on the host).
+            if self.config.extra_hosts:
+                container_config['extra_hosts'] = dict(self.config.extra_hosts)
+
             # Privileged mode
             container_config['privileged'] = self.config.privileged
 
