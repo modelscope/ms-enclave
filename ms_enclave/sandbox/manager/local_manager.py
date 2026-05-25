@@ -61,7 +61,7 @@ class LocalSandboxManager(SandboxManager):
         # atexit-driven shutdown reaches us). In that case we can't drive the
         # cancellation to completion, so suppress asyncio's "Task was
         # destroyed but it is pending" noise via _log_destroy_pending.
-        if self._cleanup_task:
+        if self._cleanup_task and not self._cleanup_task.done():
             try:
                 task_loop = self._cleanup_task.get_loop()
             except RuntimeError:
@@ -72,8 +72,11 @@ class LocalSandboxManager(SandboxManager):
                 try:
                     self._cleanup_task.cancel()
                     await self._cleanup_task
-                except (asyncio.CancelledError, RuntimeError):
+                except asyncio.CancelledError:
                     pass
+                except RuntimeError:
+                    self._cleanup_task._log_destroy_pending = False
+        self._cleanup_task = None
 
         # Stop and cleanup all sandboxes
         await self.cleanup_all_sandboxes()
