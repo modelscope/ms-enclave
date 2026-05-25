@@ -55,13 +55,25 @@ class LocalSandboxManager(SandboxManager):
 
         self._running = False
 
-        # Cancel cleanup task
+        # Cancel cleanup task. The task may be bound to an asyncio loop that
+        # has already been closed (e.g. when the worker thread that first
+        # called start() has exited and torn down its per-thread loop before
+        # atexit-driven shutdown reaches us). In that case we can't drive the
+        # cancellation to completion, so suppress asyncio's "Task was
+        # destroyed but it is pending" noise via _log_destroy_pending.
         if self._cleanup_task:
-            self._cleanup_task.cancel()
             try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
+                task_loop = self._cleanup_task.get_loop()
+            except RuntimeError:
+                task_loop = None
+            if task_loop is None or task_loop.is_closed():
+                self._cleanup_task._log_destroy_pending = False
+            else:
+                try:
+                    self._cleanup_task.cancel()
+                    await self._cleanup_task
+                except (asyncio.CancelledError, RuntimeError):
+                    pass
 
         # Stop and cleanup all sandboxes
         await self.cleanup_all_sandboxes()
