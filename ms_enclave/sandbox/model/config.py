@@ -65,6 +65,16 @@ class DockerSandboxConfig(SandboxConfig):
     )
     ports: Dict[str, Union[int, str, Tuple[str, int]]] = Field(default_factory=dict, description='Port mappings')
     network: Optional[str] = Field('bridge', description='Network name')
+    extra_hosts: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            'Additional ``hostname -> ip`` entries written to the container\'s /etc/hosts. '
+            'Use the special value ``host-gateway`` to resolve a hostname to the Docker host '
+            '(e.g. ``{"host.docker.internal": "host-gateway"}`` so processes inside the '
+            'container can reach a service on the host on Linux, where the alias is not '
+            'provided automatically). Maps directly onto the docker-py ``extra_hosts`` kwarg.'
+        ),
+    )
     platform: Optional[str] = Field(
         default=None,
         description='Docker platform (e.g. "linux/amd64"). Required when the image arch differs from the host '
