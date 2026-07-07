@@ -3,6 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ms_enclave.sandbox.model.constants import DEFAULT_POOL_EXECUTION_TIMEOUT
@@ -130,6 +131,17 @@ class LocalSandboxManager(SandboxManager):
         """
         return self._sandboxes.get(sandbox_id)
 
+    def _get_running_sandbox(self, sandbox_id: str) -> Sandbox:
+        """Return a running sandbox or raise a consistent error."""
+        if not self._running:
+            raise RuntimeError('Sandbox manager not started')
+        sandbox = self._sandboxes.get(sandbox_id)
+        if not sandbox:
+            raise ValueError(f'Sandbox {sandbox_id} not found')
+        if sandbox.status != SandboxStatus.RUNNING:
+            raise ValueError(f'Sandbox {sandbox_id} is not running (status: {sandbox.status})')
+        return sandbox
+
     async def get_sandbox_info(self, sandbox_id: str) -> Optional[SandboxInfo]:
         """Get sandbox information.
 
@@ -219,13 +231,7 @@ class LocalSandboxManager(SandboxManager):
         Raises:
             ValueError: If sandbox or tool not found
         """
-        sandbox = self._sandboxes.get(sandbox_id)
-        if not sandbox:
-            raise ValueError(f'Sandbox {sandbox_id} not found')
-
-        if sandbox.status != SandboxStatus.RUNNING:
-            raise ValueError(f'Sandbox {sandbox_id} is not running (status: {sandbox.status})')
-
+        sandbox = self._get_running_sandbox(sandbox_id)
         result = await sandbox.execute_tool(tool_name, parameters)
         return result
 
@@ -246,6 +252,16 @@ class LocalSandboxManager(SandboxManager):
             raise ValueError(f'Sandbox {sandbox_id} not found')
 
         return sandbox.get_available_tools()
+
+    async def put_archive(self, sandbox_id: str, target_dir: str, data: bytes) -> bool:
+        """Copy a tar archive into a local sandbox directory."""
+        sandbox = self._get_running_sandbox(sandbox_id)
+        return await sandbox.put_archive(target_dir, data)
+
+    async def put_dir(self, sandbox_id: str, source_dir: str | Path, target_dir: str) -> bool:
+        """Copy a host directory into a local sandbox directory."""
+        sandbox = self._get_running_sandbox(sandbox_id)
+        return await sandbox.put_dir(source_dir, target_dir)
 
     async def cleanup_all_sandboxes(self) -> None:
         """Clean up all sandboxes."""

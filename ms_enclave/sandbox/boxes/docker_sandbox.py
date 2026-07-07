@@ -150,6 +150,19 @@ class DockerSandbox(Sandbox):
         """Return the container for tool execution."""
         return self.container
 
+    async def put_archive(self, target_dir: str, data: bytes) -> bool:
+        """Extract a tar archive into the Docker container."""
+        if not self.container:
+            raise RuntimeError('Container is not running')
+        if not target_dir:
+            raise ValueError('target_dir must not be empty')
+
+        mkdir = await self._run_blocking(self.container.exec_run, ['mkdir', '-p', target_dir])
+        if int(mkdir.exit_code or 0) != 0:
+            raise RuntimeError(f'Failed to create target directory {target_dir}: {mkdir.output!r}')
+
+        return bool(await self._run_blocking(self.container.put_archive, target_dir, data))
+
     async def _aiter_exec_output(self, exec_id: str) -> AsyncIterator[Tuple[Optional[bytes], Optional[bytes]]]:
         """Bridge ``exec_start(stream=True)`` chunks from a worker thread to async.
 

@@ -137,7 +137,7 @@ class MultiCodeExecutor(SandboxTool):
             if files:
                 for fname, content in files.items():
                     safe_name = os.path.basename(fname)
-                    await self._write_file_to_container(sandbox_context, os.path.join(workdir, safe_name), content)
+                    await sandbox_context.put_file(os.path.join(workdir, safe_name), content)
 
             # Pre-build setup (e.g., initialize a C# project)
             prebuild_error = await self._prebuild_setup(sandbox_context, lang, workdir, compile_timeout)
@@ -154,7 +154,7 @@ class MultiCodeExecutor(SandboxTool):
                     error=f'Unsupported language: {language}'
                 )
             main_path = os.path.join(workdir, main_filename)
-            await self._write_file_to_container(sandbox_context, main_path, code)
+            await sandbox_context.put_file(main_path, code)
 
             # Detect Scala classname early to provide a clear error
             scala_classname: Optional[str] = None
@@ -218,26 +218,6 @@ class MultiCodeExecutor(SandboxTool):
         if res.exit_code != 0:
             raise RuntimeError(f'Failed to create workdir: {dir_path} ({res.stderr})')
 
-    async def _write_file_to_container(self, sandbox_context: 'DockerSandbox', file_path: str, content: str) -> None:
-        """Write content to a file in the container using a tar archive; creates parent dir if missing."""
-        import io
-        import tarfile
-
-        dir_name = os.path.dirname(file_path)
-        base_name = os.path.basename(file_path)
-
-        # Ensure parent directory exists
-        await self._ensure_dir(sandbox_context, dir_name)
-
-        with io.BytesIO() as tar_stream:
-            with tarfile.TarFile(fileobj=tar_stream, mode='w') as tar:
-                data = content.encode('utf-8')
-                tarinfo = tarfile.TarInfo(name=base_name)
-                tarinfo.size = len(data)
-                tar.addfile(tarinfo, io.BytesIO(data))
-                tar_stream.seek(0)
-                sandbox_context.container.put_archive(dir_name, tar_stream.getvalue())
-
     async def _python_env_prefix(self, sandbox_context: 'DockerSandbox') -> str:
         """Best-effort Python PATH adjustment similar to get_python_rt_env('sandbox-runtime')."""
         # Prefer miniconda at /root/miniconda3 when present; avoid noisy activation errors.
@@ -279,7 +259,7 @@ class MultiCodeExecutor(SandboxTool):
         optional_flags = ['-lcrypto', '-lssl', '-lpthread']
         # Write a tiny C++ file
         test_file = os.path.join(workdir, 'mce_rt_probe.cpp')
-        await self._write_file_to_container(sandbox_context, test_file, 'int main(){return 0;}')
+        await sandbox_context.put_file(test_file, 'int main(){return 0;}')
 
         detected: List[str] = []
         for flag in optional_flags:

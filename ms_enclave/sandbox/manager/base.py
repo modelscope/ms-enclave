@@ -3,6 +3,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from collections import deque
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
 
 from ..model import (
@@ -147,6 +148,18 @@ class SandboxManager(ABC):
             ValueError: If sandbox not found
         """
         pass
+
+    async def put_archive(self, sandbox_id: str, target_dir: str, data: bytes) -> bool:
+        """Copy a tar archive into a sandbox directory.
+
+        Managers that cannot access the sandbox filesystem should leave this
+        unsupported rather than emulating transfer through shell commands.
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support put_archive')
+
+    async def put_dir(self, sandbox_id: str, source_dir: str | Path, target_dir: str) -> bool:
+        """Copy a host directory into a sandbox directory."""
+        raise NotImplementedError(f'{type(self).__name__} does not support put_dir')
 
     @abstractmethod
     async def get_stats(self) -> Dict[str, Any]:

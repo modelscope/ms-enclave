@@ -1,7 +1,9 @@
 """Base sandbox interface and factory."""
 
 import abc
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union
 
 import shortuuid as uuid
@@ -20,6 +22,7 @@ from ..model import (
     VolcengineSandboxConfig,
 )
 from ..tools import Tool, ToolFactory
+from ..utils.archive import tar_directory, tar_file
 
 logger = get_logger()
 
@@ -152,6 +155,25 @@ class Sandbox(abc.ABC):
             stream: Whether to stream output (if supported)
         """
         raise NotImplementedError('execute_command must be implemented by subclasses')
+
+    async def put_archive(self, target_dir: str, data: bytes) -> bool:
+        """Copy a tar archive into a sandbox directory."""
+        raise NotImplementedError(f'{type(self).__name__} does not support put_archive')
+
+    async def put_dir(self, source_dir: str | Path, target_dir: str) -> bool:
+        """Copy a host directory into a sandbox directory."""
+        source = Path(source_dir).expanduser()
+        if not source.is_dir():
+            raise FileNotFoundError(f'put_dir source is not a directory: {source}')
+        return await self.put_archive(target_dir, tar_directory(source))
+
+    async def put_file(self, file_path: str, content: str, encoding: str = 'utf-8') -> bool:
+        """Write a text file into the sandbox."""
+        target_dir = os.path.dirname(file_path) or '/'
+        file_name = os.path.basename(file_path)
+        if not file_name:
+            raise ValueError(f'file_path must include a file name: {file_path}')
+        return await self.put_archive(target_dir, tar_file(file_name, content.encode(encoding)))
 
     @abc.abstractmethod
     async def get_execution_context(self) -> Any:
