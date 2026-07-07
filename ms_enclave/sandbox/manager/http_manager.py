@@ -1,5 +1,7 @@
 """HTTP-based sandbox manager for remote sandbox services."""
 
+import asyncio
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
@@ -16,6 +18,7 @@ from ..model import (
     ToolExecutionRequest,
     ToolResult,
 )
+from ..utils.archive import tar_directory
 from .base import SandboxManager, register_manager
 
 logger = get_logger()
@@ -321,6 +324,38 @@ class HttpSandboxManager(SandboxManager):
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error getting sandbox tools: {e}')
             raise RuntimeError(f'Failed to get sandbox tools: {e}')
+
+    async def put_archive(self, sandbox_id: str, target_dir: str, data: bytes) -> bool:
+        """Copy a tar archive into a sandbox directory via HTTP API."""
+        if not self._session:
+            raise RuntimeError('Manager not started')
+        try:
+            async with self._session.post(
+                f'{self.base_url}/sandbox/{sandbox_id}/archive',
+                params={'target_dir': target_dir},
+                data=data,
+                headers={'Content-Type': 'application/x-tar'},
+            ) as response:
+                if response.status == 200:
+                    payload = await response.json()
+                    return bool(payload.get('ok', True))
+                error_data = await response.json()
+                detail = error_data.get('detail', 'Unknown error')
+                if response.status in (400, 404):
+                    raise ValueError(detail)
+                if response.status == 501:
+                    raise NotImplementedError(detail)
+                raise RuntimeError(f'HTTP {response.status}: {detail}')
+        except aiohttp.ClientError as e:
+            logger.error(f'HTTP client error uploading archive: {e}')
+            raise RuntimeError(f'Failed to upload archive: {e}')
+
+    async def put_dir(self, sandbox_id: str, source_dir: str | Path, target_dir: str) -> bool:
+        """Copy a host directory into a sandbox directory via HTTP API."""
+        source = Path(source_dir).expanduser()
+        if not source.is_dir():
+            raise FileNotFoundError(f'put_dir source is not a directory: {source}')
+        return await self.put_archive(sandbox_id, target_dir, await asyncio.to_thread(tar_directory, source))
 
     async def cleanup_all_sandboxes(self) -> None:
         """Clean up all sandboxes created by this manager via HTTP API."""

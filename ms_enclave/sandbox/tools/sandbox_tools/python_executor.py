@@ -1,6 +1,5 @@
 """Python code execution tool."""
 
-import os
 import uuid
 from typing import TYPE_CHECKING, Optional
 
@@ -59,7 +58,7 @@ class PythonExecutor(SandboxTool):
         try:
 
             # Write script to container to avoid long code errors
-            await self._write_file_to_container(sandbox_context, script_path, code)
+            await sandbox_context.put_file(script_path, code)
 
             # Execute using python
             command = f'python {script_path}'
@@ -80,20 +79,3 @@ class PythonExecutor(SandboxTool):
             return ToolResult(
                 tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Execution failed: {str(e)}'
             )
-
-    async def _write_file_to_container(self, sandbox_context: 'DockerSandbox', file_path: str, content: str) -> None:
-        """Write content to a file in the container."""
-        import io
-        import tarfile
-
-        # Create a tar archive in memory using context managers
-        with io.BytesIO() as tar_stream:
-            with tarfile.TarFile(fileobj=tar_stream, mode='w') as tar:
-                file_data = content.encode('utf-8')
-                tarinfo = tarfile.TarInfo(name=os.path.basename(file_path))
-                tarinfo.size = len(file_data)
-                tar.addfile(tarinfo, io.BytesIO(file_data))
-
-                # Reset stream position and put archive into container
-                tar_stream.seek(0)
-                sandbox_context.container.put_archive(os.path.dirname(file_path), tar_stream.getvalue())

@@ -164,6 +164,23 @@ class SandboxServer:
             except ValueError as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
+        @self.app.post('/sandbox/{sandbox_id}/archive')
+        async def put_archive(sandbox_id: str, target_dir: str, request: Request):
+            """Copy a tar archive into a sandbox directory."""
+            data = await request.body()
+            if not data:
+                raise HTTPException(status_code=400, detail='Archive body must not be empty')
+            try:
+                ok = await self.manager.put_archive(sandbox_id, target_dir, data)
+                return {'ok': ok}
+            except ValueError as e:
+                status_code = 404 if 'not found' in str(e).lower() else 400
+                raise HTTPException(status_code=status_code, detail=str(e))
+            except NotImplementedError as e:
+                raise HTTPException(status_code=501, detail=str(e))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
         # System info
         @self.app.get('/stats')
         async def get_stats():

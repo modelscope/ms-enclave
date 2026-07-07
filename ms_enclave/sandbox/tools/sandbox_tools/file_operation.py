@@ -1,8 +1,6 @@
 """File operation tool for reading and writing files."""
 
-import io
 import os
-import tarfile
 import uuid
 from typing import TYPE_CHECKING, Literal, Optional
 
@@ -173,8 +171,8 @@ class FileOperation(SandboxTool):
             # Generate unique temporary file name to avoid conflicts
             temp_file = f'/tmp/file_op_{uuid.uuid4().hex}'
 
-            # Step 1: Write content to temporary location using tar archive
-            await self._write_file_to_container(sandbox_context, temp_file, content, encoding)
+            # Step 1: Write content to temporary location using sandbox file transfer
+            await sandbox_context.put_file(temp_file, content, encoding)
 
             # Step 2: Copy from temp to target location using cp command
             # This handles permission issues better than direct tar extraction
@@ -296,36 +294,3 @@ class FileOperation(SandboxTool):
             return ToolResult(
                 tool_name=self.name, status=ExecutionStatus.ERROR, output='', error=f'Exists check failed: {str(e)}'
             )
-
-    async def _write_file_to_container(
-        self, sandbox_context: 'Sandbox', file_path: str, content: str, encoding: str
-    ) -> None:
-        """Write content to a file in the container using tar archive method.
-
-        This is a low-level method that creates a tar archive containing the file
-        and extracts it to the container. Used internally by _write_file.
-
-        Args:
-            sandbox_context: Sandbox instance with container access
-            file_path: Target file path in container
-            content: File content as string
-            encoding: Text encoding for content conversion
-
-        Raises:
-            Exception: If tar creation or container extraction fails
-        """
-        # Create a tar archive in memory to transfer file content
-        tar_stream = io.BytesIO()
-        tar = tarfile.TarFile(fileobj=tar_stream, mode='w')
-
-        # Encode content using specified encoding and create tar entry
-        file_data = content.encode(encoding)
-        tarinfo = tarfile.TarInfo(name=os.path.basename(file_path))
-        tarinfo.size = len(file_data)
-        tar.addfile(tarinfo, io.BytesIO(file_data))
-        tar.close()
-
-        # Extract tar archive to container filesystem
-        # Note: This writes to the directory containing the target file
-        tar_stream.seek(0)
-        sandbox_context.container.put_archive(os.path.dirname(file_path) or '/', tar_stream.getvalue())
