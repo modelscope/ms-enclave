@@ -1,6 +1,7 @@
 """Base sandbox interface and factory."""
 
 import abc
+import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
@@ -165,10 +166,12 @@ class Sandbox(abc.ABC):
         source = Path(source_dir).expanduser()
         if not source.is_dir():
             raise FileNotFoundError(f'put_dir source is not a directory: {source}')
-        return await self.put_archive(target_dir, tar_directory(source))
+        return await self.put_archive(target_dir, await asyncio.to_thread(tar_directory, source))
 
     async def put_file(self, file_path: str, content: str, encoding: str = 'utf-8') -> bool:
         """Write a text file into the sandbox."""
+        if not os.path.isabs(file_path):
+            raise ValueError(f'file_path must be an absolute path: {file_path}')
         target_dir = os.path.dirname(file_path) or '/'
         file_name = os.path.basename(file_path)
         if not file_name:

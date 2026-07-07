@@ -1,5 +1,6 @@
 """HTTP-based sandbox manager for remote sandbox services."""
 
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -340,7 +341,7 @@ class HttpSandboxManager(SandboxManager):
                     return bool(payload.get('ok', True))
                 error_data = await response.json()
                 detail = error_data.get('detail', 'Unknown error')
-                if response.status == 404:
+                if response.status in (400, 404):
                     raise ValueError(detail)
                 if response.status == 501:
                     raise NotImplementedError(detail)
@@ -354,7 +355,7 @@ class HttpSandboxManager(SandboxManager):
         source = Path(source_dir).expanduser()
         if not source.is_dir():
             raise FileNotFoundError(f'put_dir source is not a directory: {source}')
-        return await self.put_archive(sandbox_id, target_dir, tar_directory(source))
+        return await self.put_archive(sandbox_id, target_dir, await asyncio.to_thread(tar_directory, source))
 
     async def cleanup_all_sandboxes(self) -> None:
         """Clean up all sandboxes created by this manager via HTTP API."""

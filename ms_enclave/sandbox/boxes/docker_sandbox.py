@@ -157,8 +157,8 @@ class DockerSandbox(Sandbox):
         if not target_dir:
             raise ValueError('target_dir must not be empty')
 
-        mkdir = await self._run_blocking(self.container.exec_run, ['mkdir', '-p', target_dir])
-        if int(mkdir.exit_code or 0) != 0:
+        mkdir = await self._run_blocking(self.container.exec_run, ['mkdir', '-p', '--', target_dir])
+        if mkdir.exit_code is None or mkdir.exit_code != 0:
             raise RuntimeError(f'Failed to create target directory {target_dir}: {mkdir.output!r}')
 
         return bool(await self._run_blocking(self.container.put_archive, target_dir, data))

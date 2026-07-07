@@ -1,8 +1,9 @@
 """Archive helpers for sandbox file transfer."""
 
 import io
-from pathlib import Path
 import tarfile
+import time
+from pathlib import Path
 
 
 def tar_directory(source: Path) -> bytes:
@@ -24,6 +25,7 @@ def tar_file(name: str, data: bytes) -> bytes:
     with tarfile.open(fileobj=stream, mode='w') as tar:
         tarinfo = tarfile.TarInfo(name=name)
         tarinfo.size = len(data)
+        tarinfo.mtime = int(time.time())
         tar.addfile(tarinfo, io.BytesIO(data))
     stream.seek(0)
     return stream.getvalue()

@@ -174,7 +174,8 @@ class SandboxServer:
                 ok = await self.manager.put_archive(sandbox_id, target_dir, data)
                 return {'ok': ok}
             except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                status_code = 404 if 'not found' in str(e).lower() else 400
+                raise HTTPException(status_code=status_code, detail=str(e))
             except NotImplementedError as e:
                 raise HTTPException(status_code=501, detail=str(e))
             except Exception as e:

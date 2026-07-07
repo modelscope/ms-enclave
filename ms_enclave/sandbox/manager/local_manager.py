@@ -138,8 +138,8 @@ class LocalSandboxManager(SandboxManager):
         sandbox = self._sandboxes.get(sandbox_id)
         if not sandbox:
             raise ValueError(f'Sandbox {sandbox_id} not found')
-        if sandbox.status != SandboxStatus.RUNNING:
-            raise ValueError(f'Sandbox {sandbox_id} is not running (status: {sandbox.status})')
+        if sandbox.status not in (SandboxStatus.RUNNING, SandboxStatus.IDLE, SandboxStatus.BUSY):
+            raise ValueError(f'Sandbox {sandbox_id} is not active (status: {sandbox.status})')
         return sandbox
 
     async def get_sandbox_info(self, sandbox_id: str) -> Optional[SandboxInfo]:

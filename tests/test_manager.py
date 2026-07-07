@@ -38,9 +38,9 @@ async def _wait_for_port(host: str, port: int) -> None:
 
 
 def _skip_if_docker_unavailable() -> None:
-    import docker
-
     try:
+        import docker
+
         client = docker.from_env()
         client.ping()
         client.close()
@@ -219,6 +219,20 @@ class TestLocalSandboxManager(unittest.IsolatedAsyncioTestCase):
                 'python_executor',
                 {'code': 'print("test")'}
             )
+
+    async def test_execute_tool_accepts_active_pool_statuses(self):
+        """Test direct operations can target pooled sandboxes."""
+        for status in (SandboxStatus.IDLE, SandboxStatus.BUSY):
+            sandbox = MagicMock()
+            sandbox.status = status
+            sandbox.execute_tool = AsyncMock(return_value=f'{status.value}-result')
+            sandbox.stop = AsyncMock()
+            self.manager._sandboxes[status.value] = sandbox
+
+            result = await self.manager.execute_tool(status.value, 'python_executor', {})
+
+            self.assertEqual(result, f'{status.value}-result')
+            sandbox.execute_tool.assert_awaited_once_with('python_executor', {})
 
 
 class TestSandboxFileTransfer(unittest.IsolatedAsyncioTestCase):
