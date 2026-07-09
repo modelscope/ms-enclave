@@ -193,7 +193,9 @@ class MultiCodeExecutor(SandboxTool):
 
             # Run phase
             run_res = await self._exec_in_dir(sandbox_context, workdir, run_cmd, timeout=run_timeout or 30)
-            status = ExecutionStatus.SUCCESS if run_res.exit_code == 0 else ExecutionStatus.ERROR
+            status = ExecutionStatus.TIMEOUT if run_res.status == ExecutionStatus.TIMEOUT else (
+                ExecutionStatus.SUCCESS if run_res.exit_code == 0 else ExecutionStatus.ERROR
+            )
             return ToolResult(
                 tool_name=self.name,
                 status=status,
