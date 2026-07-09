@@ -66,6 +66,13 @@ class ShellExecutor(SandboxTool):
         try:
             result = await sandbox_context.execute_command(command, timeout=timeout)
 
+            if result.status == ExecutionStatus.TIMEOUT:
+                return ToolResult(
+                    tool_name=self.name,
+                    status=ExecutionStatus.TIMEOUT,
+                    output=result.stdout,
+                    error=result.stderr if result.stderr else f'Command timed out after {timeout} seconds'
+                )
             if result.exit_code == 0:
                 return ToolResult(
                     tool_name=self.name,
