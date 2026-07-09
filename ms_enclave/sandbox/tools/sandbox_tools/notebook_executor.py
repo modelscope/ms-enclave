@@ -49,7 +49,9 @@ class NotebookExecutor(SandboxTool):
             # Execute code using the sandbox's Jupyter kernel
             result = await self._execute_in_kernel(sandbox_context, code, timeout)
 
-            if result.exit_code == 0:
+            if result.status == ExecutionStatus.TIMEOUT:
+                status = ExecutionStatus.TIMEOUT
+            elif result.exit_code == 0:
                 status = ExecutionStatus.SUCCESS
             else:
                 status = ExecutionStatus.ERROR
@@ -82,6 +84,7 @@ class NotebookExecutor(SandboxTool):
         outputs = []
         result = None
         error_occurred = False
+        timed_out = False
         error_msg = ''
         actual_timeout = timeout or 30
         start_time = time.time()
@@ -90,8 +93,11 @@ class NotebookExecutor(SandboxTool):
             elapsed = time.time() - start_time
             if elapsed >= actual_timeout:
                 error_occurred = True
+                timed_out = True
                 error_msg = f'Execution timed out after {actual_timeout} seconds'
                 logger.error(error_msg)
+                await self._interrupt_kernel(sandbox_context)
+                self._drain_execution_messages(sandbox_context, msg_id)
                 break
 
             try:
@@ -104,7 +110,7 @@ class NotebookExecutor(SandboxTool):
                 if parent_msg_id != msg_id:
                     continue
 
-                msg_type = msg.get('msg_type', '')
+                msg_type = msg.get('msg_type') or msg.get('header', {}).get('msg_type', '')
                 msg_content = msg.get('content', {})
 
                 if msg_type == 'stream':
@@ -119,6 +125,8 @@ class NotebookExecutor(SandboxTool):
                     break
 
             except Exception as e:
+                if type(e).__name__ == 'WebSocketTimeoutException':
+                    continue
                 logger.error(f'Error receiving message: {e}')
                 error_occurred = True
                 error_msg = str(e)
@@ -131,12 +139,51 @@ class NotebookExecutor(SandboxTool):
             output_text += f'\n{error_msg}'
 
         return CommandResult(
-            status=ExecutionStatus.SUCCESS if not error_occurred else ExecutionStatus.ERROR,
+            status=ExecutionStatus.TIMEOUT if timed_out else
+            (ExecutionStatus.SUCCESS if not error_occurred else ExecutionStatus.ERROR),
             command=code,
             exit_code=1 if error_occurred else 0,
             stdout=output_text if not error_occurred else '',
             stderr=output_text if error_occurred else ''
         )
+
+    async def _interrupt_kernel(self, sandbox_context: 'Sandbox') -> None:
+        if not getattr(sandbox_context, 'base_url', None) or not getattr(sandbox_context, 'kernel_id', None):
+            return
+
+        def _post_interrupt():
+            import requests
+            url = f'{sandbox_context.base_url}/api/kernels/{sandbox_context.kernel_id}/interrupt'
+            return requests.post(url, timeout=5)
+
+        try:
+            import asyncio
+            response = await asyncio.to_thread(_post_interrupt)
+            if response.status_code not in (200, 204):
+                logger.warning(f'Kernel interrupt returned HTTP {response.status_code}: {response.text}')
+        except Exception as e:
+            logger.warning(f'Failed to interrupt notebook kernel after timeout: {e}')
+
+    def _drain_execution_messages(self, sandbox_context: 'Sandbox', msg_id: str, timeout: float = 2.0) -> None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                remaining = max(0.1, min(0.5, deadline - time.time()))
+                sandbox_context.ws.settimeout(remaining)
+                msg = json.loads(sandbox_context.ws.recv())
+            except Exception as e:
+                if type(e).__name__ == 'WebSocketTimeoutException':
+                    continue
+                logger.debug(f'Error draining notebook timeout messages: {e}')
+                return
+
+            if msg.get('parent_header', {}).get('msg_id') != msg_id:
+                continue
+
+            msg_type = msg.get('msg_type') or msg.get('header', {}).get('msg_type', '')
+            msg_content = msg.get('content', {})
+            if msg_type == 'status' and msg_content.get('execution_state') == 'idle':
+                return
 
     def _send_execute_request(self, sandbox_context: 'Sandbox', code: str) -> str:
         """Send code execution request to kernel."""

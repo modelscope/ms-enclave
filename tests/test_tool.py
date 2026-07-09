@@ -74,6 +74,109 @@ class TestExecutorTool(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, ExecutionStatus.SUCCESS)
         self.assertIn('Hello, Shell!', result.output)
 
+    async def test_execute_command_timeout_wrapper_keeps_original_command(self):
+        command = ['bash', '-c', 'echo wrapped']
+
+        result = await self.docker_sandbox.execute_command(command, timeout=5)
+
+        self.assertEqual(result.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(result.command, command)
+        self.assertIn('wrapped', result.stdout)
+
+    async def test_execute_command_zero_timeout_disables_timeout(self):
+        result = await self.docker_sandbox.execute_command(['bash', '-c', 'echo no-timeout'], timeout=0)
+
+        self.assertEqual(result.status, ExecutionStatus.SUCCESS)
+        self.assertIn('no-timeout', result.stdout)
+
+    async def test_shell_executor_exit_124_is_not_timeout(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+
+        result = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', 'exit 124'], 'timeout': 5}
+        )
+
+        self.assertEqual(result.status, ExecutionStatus.ERROR)
+
+    async def test_shell_executor_sigkill_is_not_timeout(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+
+        result = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', 'kill -9 $$'], 'timeout': 5}
+        )
+
+        self.assertEqual(result.status, ExecutionStatus.ERROR)
+
+    async def test_shell_executor_timeout_terminates_child_process(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+        marker = '/tmp/ms-enclave-shell-timeout-marker'
+
+        await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'rm -f {marker}'], 'timeout': 5}
+        )
+        result = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'sleep 2; touch {marker}'], 'timeout': 0.3}
+        )
+
+        self.assertEqual(result.status, ExecutionStatus.TIMEOUT)
+        await asyncio.sleep(2.5)
+        check = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT']}
+        )
+        self.assertEqual(check.output.strip(), 'ABSENT')
+
+    async def test_shell_executor_timeout_terminates_grandchild_process(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+        marker = '/tmp/ms-enclave-shell-grandchild-timeout-marker'
+
+        await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'rm -f {marker}'], 'timeout': 5}
+        )
+        result = await self.docker_sandbox.execute_tool(
+            'shell_executor',
+            {
+                'command': ['bash', '-c', f'bash -c "bash -c \\"sleep 2; touch {marker}\\" & wait"'],
+                'timeout': 0.3
+            }
+        )
+
+        self.assertEqual(result.status, ExecutionStatus.TIMEOUT)
+        await asyncio.sleep(2.5)
+        check = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT']}
+        )
+        self.assertEqual(check.output.strip(), 'ABSENT')
+
+    async def test_python_executor_timeout_terminates_child_process(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('python_executor')
+        )
+        marker = '/tmp/ms-enclave-python-timeout-marker'
+
+        await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'rm -f {marker}'], 'timeout': 5}
+        )
+        code = f"import os\nos.system('sleep 2; touch {marker}')\n"
+        result = await self.docker_sandbox.execute_tool('python_executor', {'code': code, 'timeout': 0.3})
+
+        self.assertEqual(result.status, ExecutionStatus.TIMEOUT)
+        await asyncio.sleep(2.5)
+        check = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT']}
+        )
+        self.assertEqual(check.output.strip(), 'ABSENT')
+
     async def test_file_operation(self):
         self.docker_sandbox.add_tool(
             ToolFactory.create_tool('file_operation')
@@ -168,6 +271,25 @@ print(c)"""
         print(result2.model_dump_json())
         self.assertEqual(result.output.strip(),  result2.output.strip())
         self.assertEqual(result2.status, ExecutionStatus.SUCCESS)
+
+    async def test_notebook_executor_timeout_interrupts_kernel(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('notebook_executor')
+        )
+
+        await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': "globals().pop('timeout_marker', None)"}
+        )
+        result = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': "import time\ntime.sleep(5)\ntimeout_marker = 'PRESENT'", 'timeout': 1}
+        )
+
+        self.assertEqual(result.status, ExecutionStatus.TIMEOUT)
+        check = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': "globals().get('timeout_marker', 'ABSENT')"}
+        )
+        self.assertEqual(check.status, ExecutionStatus.SUCCESS)
+        self.assertIn('ABSENT', check.output)
 
 if __name__ == '__main__':
     import asyncio

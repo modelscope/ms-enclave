@@ -64,7 +64,9 @@ class PythonExecutor(SandboxTool):
             command = f'python {script_path}'
             result = await sandbox_context.execute_command(command, timeout=timeout)
 
-            if result.exit_code == 0:
+            if result.status == ExecutionStatus.TIMEOUT:
+                status = ExecutionStatus.TIMEOUT
+            elif result.exit_code == 0:
                 status = ExecutionStatus.SUCCESS
             else:
                 status = ExecutionStatus.ERROR

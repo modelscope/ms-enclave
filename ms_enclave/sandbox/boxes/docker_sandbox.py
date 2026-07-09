@@ -18,6 +18,7 @@ from .base import Sandbox, register_sandbox
 logger = get_logger()
 
 _QUEUE_SENTINEL = object()
+_TIMEOUT_EXIT_CODES = {124, 137}
 
 
 @register_sandbox(SandboxType.DOCKER)
@@ -194,7 +195,31 @@ class DockerSandbox(Sandbox):
             yield item
 
     async def _kill_exec_safe(self, exec_id: str) -> None:
-        """Best-effort exec_kill so the producer iterator unblocks."""
+        """Best-effort termination of the exec process and its children."""
+        pid = None
+        try:
+            inspect = await self._run_blocking(self.client.api.exec_inspect, exec_id)
+            pid = inspect.get('Pid')
+        except Exception as e:
+            logger.debug(f'exec_inspect failed before exec_kill: {e}')
+
+        if pid and self.container:
+            kill_tree_cmd = (
+                'kill_tree() { '
+                'for child in $(cat /proc/$1/task/$1/children 2>/dev/null); do '
+                'kill_tree "$child" "$2"; '
+                'done; '
+                'kill "$2" "$1" 2>/dev/null || true; '
+                '}; '
+                f'kill_tree {pid} -TERM; '
+                'sleep 0.2; '
+                f'kill_tree {pid} -KILL'
+            )
+            try:
+                await self._run_blocking(self.container.exec_run, ['sh', '-c', kill_tree_cmd])
+            except Exception as e:
+                logger.debug(f'exec process-tree kill failed: {e}')
+
         try:
             await self._run_blocking(self.client.api.exec_kill, exec_id, 'SIGKILL')
         except Exception as e:
@@ -221,6 +246,36 @@ class DockerSandbox(Sandbox):
         stderr = err_bytes.decode('utf-8', errors='replace') if err_bytes else ''
         return res.exit_code, stdout, stderr
 
+    @staticmethod
+    def _wrap_command_timeout(command: Union[str, List[str]], timeout: Optional[int]) -> Union[str, List[str]]:
+        """Run the command under GNU timeout inside the container."""
+        if timeout is None:
+            return command
+        timeout_s = float(timeout)
+        if timeout_s <= 0:
+            return command
+
+        prefix = ['timeout', '-s', 'TERM', '-k', '5s', f'{timeout_s}s']
+        if isinstance(command, list):
+            return [*prefix, *command]
+        return [*prefix, 'sh', '-c', command]
+
+    @staticmethod
+    def _outer_timeout(timeout: Optional[int]) -> Optional[float]:
+        if timeout is None:
+            return None
+        timeout_s = float(timeout)
+        return timeout_s + 10.0 if timeout_s > 0 else None
+
+    @staticmethod
+    def _is_timeout_exit(exit_code: int, timeout: Optional[int], started_at: float) -> bool:
+        if exit_code not in _TIMEOUT_EXIT_CODES or timeout is None:
+            return False
+        timeout_s = float(timeout)
+        if timeout_s <= 0:
+            return False
+        return time.monotonic() - started_at + 0.05 >= timeout_s
+
     async def execute_command(
         self, command: Union[str, List[str]], timeout: Optional[int] = None, stream: bool = True
     ) -> CommandResult:
@@ -241,16 +296,28 @@ class DockerSandbox(Sandbox):
         if not self.container or not self.client:
             raise RuntimeError('Container is not running')
 
+        original_command = command
+        exec_command = self._wrap_command_timeout(command, timeout)
+        wait_timeout = self._outer_timeout(timeout)
+
         if not stream:
             try:
+                started_at = time.monotonic()
                 exit_code, stdout, stderr = await asyncio.wait_for(
-                    self._run_blocking(self._run_buffered, command), timeout=timeout
+                    self._run_blocking(self._run_buffered, exec_command), timeout=wait_timeout
                 )
-                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
-                return CommandResult(command=command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr)
+                if self._is_timeout_exit(exit_code, timeout, started_at):
+                    status = ExecutionStatus.TIMEOUT
+                    exit_code = -1
+                    stderr = stderr or f'Command timed out after {timeout} seconds'
+                else:
+                    status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+                return CommandResult(
+                    command=original_command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr
+                )
             except asyncio.TimeoutError:
                 return CommandResult(
-                    command=command,
+                    command=original_command,
                     status=ExecutionStatus.TIMEOUT,
                     exit_code=-1,
                     stdout='',
@@ -258,12 +325,12 @@ class DockerSandbox(Sandbox):
                 )
             except Exception as e:
                 return CommandResult(
-                    command=command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
+                    command=original_command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
                 )
 
         # Streaming path: keep exec_id so we can exec_kill on cancel/timeout.
         exec_meta = await self._run_blocking(
-            self.client.api.exec_create, container=self.container.id, cmd=command, tty=False
+            self.client.api.exec_create, container=self.container.id, cmd=exec_command, tty=False
         )
         exec_id = exec_meta['Id']
 
@@ -284,23 +351,30 @@ class DockerSandbox(Sandbox):
                         logger.error(f'[📦 {self.id}] {line}')
 
         try:
-            await asyncio.wait_for(_consume(), timeout=timeout)
+            started_at = time.monotonic()
+            await asyncio.wait_for(_consume(), timeout=wait_timeout)
             inspect = await self._run_blocking(self.client.api.exec_inspect, exec_id)
             exit_code = inspect.get('ExitCode')
             if exit_code is None:
                 exit_code = -1
-            status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+            if self._is_timeout_exit(exit_code, timeout, started_at):
+                status = ExecutionStatus.TIMEOUT
+                exit_code = -1
+                stderr = ''.join(stderr_parts) or f'Command timed out after {timeout} seconds'
+            else:
+                status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
+                stderr = ''.join(stderr_parts)
             return CommandResult(
-                command=command,
+                command=original_command,
                 status=status,
                 exit_code=exit_code,
                 stdout=''.join(stdout_parts),
-                stderr=''.join(stderr_parts),
+                stderr=stderr,
             )
         except asyncio.TimeoutError:
             await self._kill_exec_safe(exec_id)
             return CommandResult(
-                command=command,
+                command=original_command,
                 status=ExecutionStatus.TIMEOUT,
                 exit_code=-1,
                 stdout=''.join(stdout_parts),
@@ -312,7 +386,7 @@ class DockerSandbox(Sandbox):
         except Exception as e:
             await self._kill_exec_safe(exec_id)
             return CommandResult(
-                command=command,
+                command=original_command,
                 status=ExecutionStatus.ERROR,
                 exit_code=-1,
                 stdout=''.join(stdout_parts),
