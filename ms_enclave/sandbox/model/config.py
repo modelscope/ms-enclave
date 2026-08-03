@@ -58,6 +58,10 @@ class DockerSandboxConfig(SandboxConfig):
     """Docker-specific sandbox configuration."""
 
     image: str = Field('python:3.11-slim', description='Docker image name')
+    entrypoint: Optional[Union[str, List[str]]] = Field(
+        None,
+        description='Container entrypoint override. Use an empty list to clear the image entrypoint.',
+    )
     command: Optional[Union[str, List[str]]] = Field(None, description='Container command')
     volumes: Dict[str, Dict[str, str]] = Field(
         default_factory=dict,
