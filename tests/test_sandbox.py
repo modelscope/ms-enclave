@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ms_enclave.sandbox.boxes import SandboxFactory
+from ms_enclave.sandbox.boxes import DockerSandbox, SandboxFactory
 from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxStatus, SandboxType
 from ms_enclave.sandbox.tools import ToolFactory
 
@@ -89,6 +89,33 @@ print(f"Squares: {data}")
             info = sandbox.get_info()
             self.assertEqual(info.type, SandboxType.DOCKER)
             self.assertIsNotNone(info.status)
+
+    async def test_docker_entrypoint_override(self):
+        """Docker config passes entrypoint overrides, including an explicit empty list."""
+        for entrypoint in ('/bin/sh', ['/bin/sh', '-c'], []):
+            config = DockerSandboxConfig(image='example:latest', entrypoint=entrypoint)
+            restored = DockerSandboxConfig.model_validate_json(config.model_dump_json())
+            self.assertEqual(restored.entrypoint, entrypoint)
+
+            sandbox = DockerSandbox(config)
+            sandbox.client = MagicMock()
+            sandbox._run_blocking = AsyncMock(return_value=MagicMock())
+            try:
+                await sandbox._create_container()
+                self.assertEqual(sandbox._run_blocking.await_args.kwargs['entrypoint'], entrypoint)
+            finally:
+                sandbox._executor.shutdown(wait=False, cancel_futures=True)
+
+    async def test_docker_entrypoint_inherits_image_by_default(self):
+        """An unset entrypoint is omitted so Docker inherits the image configuration."""
+        sandbox = DockerSandbox(DockerSandboxConfig(image='example:latest'))
+        sandbox.client = MagicMock()
+        sandbox._run_blocking = AsyncMock(return_value=MagicMock())
+        try:
+            await sandbox._create_container()
+            self.assertNotIn('entrypoint', sandbox._run_blocking.await_args.kwargs)
+        finally:
+            sandbox._executor.shutdown(wait=False, cancel_futures=True)
 
 
 

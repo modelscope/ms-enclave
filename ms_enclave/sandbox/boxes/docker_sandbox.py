@@ -536,6 +536,10 @@ class DockerSandbox(Sandbox):
                 'stdin_open': True,
             }
 
+            # Check against None so an empty list can explicitly clear the image entrypoint.
+            if self.config.entrypoint is not None:
+                container_config['entrypoint'] = self.config.entrypoint
+
             # Add command if specified
             if self.config.command:
                 container_config['command'] = self.config.command
