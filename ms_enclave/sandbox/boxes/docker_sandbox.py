@@ -195,35 +195,18 @@ class DockerSandbox(Sandbox):
             yield item
 
     async def _kill_exec_safe(self, exec_id: str) -> None:
-        """Best-effort termination of the exec process and its children."""
-        pid = None
+        """Force-restart the sandbox when a Docker exec is still running."""
+        if not self.container:
+            return
         try:
             inspect = await self._run_blocking(self.client.api.exec_inspect, exec_id)
-            pid = inspect.get('Pid')
-        except Exception as e:
-            logger.debug(f'exec_inspect failed before exec_kill: {e}')
-
-        if pid and self.container:
-            kill_tree_cmd = (
-                'kill_tree() { '
-                'for child in $(cat /proc/$1/task/$1/children 2>/dev/null); do '
-                'kill_tree "$child" "$2"; '
-                'done; '
-                'kill "$2" "$1" 2>/dev/null || true; '
-                '}; '
-                f'kill_tree {pid} -TERM; '
-                'sleep 0.2; '
-                f'kill_tree {pid} -KILL'
-            )
-            try:
-                await self._run_blocking(self.container.exec_run, ['sh', '-c', kill_tree_cmd])
-            except Exception as e:
-                logger.debug(f'exec process-tree kill failed: {e}')
-
-        try:
-            await self._run_blocking(self.client.api.exec_kill, exec_id, 'SIGKILL')
-        except Exception as e:
-            logger.debug(f'exec_kill failed (likely already finished): {e}')
+            if not inspect.get('Running'):
+                return
+            logger.warning(f'Exec {exec_id} is still running; restarting sandbox container.')
+            await self._run_blocking(self.container.kill)
+            await self._run_blocking(self.container.start)
+        except Exception as exc:
+            logger.debug(f'Failed to restart sandbox after cancelling exec {exec_id}: {exc}')
 
     def _run_buffered(self, command: Union[str, List[str]]) -> Tuple[int, str, str]:
         """Execute command and return buffered output using high-level API.

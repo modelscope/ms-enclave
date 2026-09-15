@@ -155,6 +155,30 @@ class TestExecutorTool(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(check.output.strip(), 'ABSENT')
 
+    async def test_shell_executor_cancellation_restarts_sandbox(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+        marker = '/tmp/ms-enclave-shell-cancel-marker'
+        await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'rm -f {marker}'], 'timeout': 5}
+        )
+        task = asyncio.create_task(
+            self.docker_sandbox.execute_tool(
+                'shell_executor', {'command': ['bash', '-c', f'sleep 2; touch {marker}'], 'timeout': 30}
+            )
+        )
+        await asyncio.sleep(0.2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        await asyncio.sleep(2.5)
+        check = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT']}
+        )
+        self.assertEqual(check.output.strip(), 'ABSENT')
+
     async def test_python_executor_timeout_terminates_child_process(self):
         self.docker_sandbox.add_tool(
             ToolFactory.create_tool('shell_executor')
