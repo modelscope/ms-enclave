@@ -14,24 +14,16 @@ if TYPE_CHECKING:
 
 @register_tool('python_executor')
 class PythonExecutor(SandboxTool):
-
     _name = 'python_executor'
     _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
     _description = 'Execute Python code in an isolated environment using IPython'
     _parameters = ToolParams(
         type='object',
         properties={
-            'code': {
-                'type': 'string',
-                'description': 'Python code to execute'
-            },
-            'timeout': {
-                'type': 'integer',
-                'description': 'Execution timeout in seconds',
-                'default': 30
-            }
+            'code': {'type': 'string', 'description': 'Python code to execute'},
+            'timeout': {'type': 'integer', 'description': 'Execution timeout in seconds', 'default': 30},
         },
-        required=['code']
+        required=['code'],
     )
 
     async def execute(self, sandbox_context: 'DockerSandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
@@ -56,7 +48,6 @@ class PythonExecutor(SandboxTool):
         script_path = f'/tmp/{script_basename}'
 
         try:
-
             # Write script to container to avoid long code errors
             await sandbox_context.put_file(script_path, code)
 
@@ -72,10 +63,7 @@ class PythonExecutor(SandboxTool):
                 status = ExecutionStatus.ERROR
 
             return ToolResult(
-                tool_name=self.name,
-                status=status,
-                output=result.stdout,
-                error=result.stderr if result.stderr else None
+                tool_name=self.name, status=status, output=result.stdout, error=result.stderr if result.stderr else None
             )
         except Exception as e:
             return ToolResult(

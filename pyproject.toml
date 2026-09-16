@@ -27,6 +27,25 @@ Homepage = "https://github.com/modelscope/ms-enclave"
 [project.scripts]
 ms-enclave = "ms_enclave.cli.cli:run_cmd"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+extend-exclude = ["build", "dist", "docs", "examples"]
+force-exclude = true
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "E741", "F401", "F403", "F405", "F821"]
+
+[tool.ruff.format]
+exclude = ["tests/**/*.py"]
+indent-style = "space"
+line-ending = "lf"
+quote-style = "single"
+
 [tool.setuptools]
 include-package-data = true
 
@@ -48,6 +67,7 @@ dev = [
     "pre-commit>=4.2.0",
     "jupyter-book>=1.0.4.post1",
     "pytest-cov>=6.2.1",
+    "ruff>=0.16.4",
 ]
 
 docker = [

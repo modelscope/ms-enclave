@@ -165,7 +165,7 @@ class TestExecutorTool(unittest.IsolatedAsyncioTestCase):
         )
         task = asyncio.create_task(
             self.docker_sandbox.execute_tool(
-                'shell_executor', {'command': ['bash', '-c', f'sleep 2; touch {marker}'], 'timeout': 30}
+                'shell_executor', {'command': ['bash', '-c', f'(sleep 2; touch {marker}) &'], 'timeout': 30}
             )
         )
         await asyncio.sleep(0.2)
@@ -314,6 +314,26 @@ print(c)"""
         )
         self.assertEqual(check.status, ExecutionStatus.SUCCESS)
         self.assertIn('ABSENT', check.output)
+
+    async def test_shell_cancellation_recreates_notebook_session(self):
+        self.docker_sandbox.add_tool(ToolFactory.create_tool('shell_executor'))
+        self.docker_sandbox.add_tool(ToolFactory.create_tool('notebook_executor'))
+
+        task = asyncio.create_task(
+            self.docker_sandbox.execute_tool(
+                'shell_executor', {'command': ['bash', '-c', '(sleep 2) &'], 'timeout': 30}
+            )
+        )
+        await asyncio.sleep(0.2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        result = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': "print('notebook recovered')"}
+        )
+        self.assertEqual(result.status, ExecutionStatus.SUCCESS)
+        self.assertIn('notebook recovered', result.output)
 
 if __name__ == '__main__':
     import asyncio

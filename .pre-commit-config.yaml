@@ -1,28 +1,10 @@
 repos:
-  - repo: https://github.com/pycqa/flake8.git
-    rev: 7.1.1
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
     hooks:
-      - id: flake8
-        exclude: |
-            (?x)^(
-                examples/|
-                docs/|
-                tests/
-            )
-  - repo: https://github.com/PyCQA/isort.git
-    rev: 6.0.1
-    hooks:
-      - id: isort
-  - repo: https://github.com/google/yapf
-    rev: v0.43.0
-    hooks:
-      - id: yapf
-        exclude: |
-            (?x)^(
-                examples/|
-                docs/|
-                tests/
-            )
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
     rev: v5.0.0
     hooks:
@@ -34,8 +16,6 @@ repos:
       - id: end-of-file-fixer
         exclude: thirdparty/|docs/
       - id: requirements-txt-fixer
-        exclude: thirdparty/
-      - id: double-quote-string-fixer
         exclude: thirdparty/
       - id: check-merge-conflict
         exclude: thirdparty/

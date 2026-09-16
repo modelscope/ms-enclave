@@ -165,13 +165,7 @@ class DockerSandbox(Sandbox):
         return bool(await self._run_blocking(self.container.put_archive, target_dir, data))
 
     async def _aiter_exec_output(self, exec_id: str) -> AsyncIterator[Tuple[Optional[bytes], Optional[bytes]]]:
-        """Bridge ``exec_start(stream=True)`` chunks from a worker thread to async.
-
-        The producer thread iterates the blocking docker generator and pushes each
-        (stdout, stderr) tuple onto an unbounded ``asyncio.Queue``. The async caller
-        consumes the queue. When the caller stops iterating (cancel/timeout), it is
-        responsible for invoking ``exec_kill`` so the producer's iterator unblocks.
-        """
+        """Bridge ``exec_start(stream=True)`` chunks from a worker thread to async."""
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
@@ -194,40 +188,36 @@ class DockerSandbox(Sandbox):
                 raise item
             yield item
 
-    async def _kill_exec_safe(self, exec_id: str) -> None:
-        """Force-restart the sandbox when a Docker exec is still running."""
-        if not self.container:
-            return
-        try:
-            inspect = await self._run_blocking(self.client.api.exec_inspect, exec_id)
-            if not inspect.get('Running'):
-                return
-            logger.warning(f'Exec {exec_id} is still running; restarting sandbox container.')
-            await self._run_blocking(self.container.kill)
-            await self._run_blocking(self.container.start)
-        except Exception as exc:
-            logger.debug(f'Failed to restart sandbox after cancelling exec {exec_id}: {exc}')
-
-    def _run_buffered(self, command: Union[str, List[str]]) -> Tuple[int, str, str]:
-        """Execute command and return buffered output using high-level API.
-
-        Returns:
-            A tuple of (exit_code, stdout, stderr)
-        """
-        if not self.container:
-            raise RuntimeError('Container is not running')
-
-        res = self.container.exec_run(command, tty=False, stream=False, demux=True)
-        out_tuple = res.output
-        if isinstance(out_tuple, tuple):
-            out_bytes, err_bytes = out_tuple
+    def _start_exec_buffered(self, exec_id: str) -> Tuple[str, str]:
+        """Start an exec and return its buffered output."""
+        output = self.client.api.exec_start(exec_id, stream=False, demux=True)
+        if isinstance(output, tuple):
+            stdout, stderr = output
         else:
-            # Fallback: when demux was not honored, treat all as stdout
-            out_bytes, err_bytes = out_tuple, b''
+            stdout, stderr = output, b''
+        return (
+            stdout.decode('utf-8', errors='replace') if stdout else '',
+            stderr.decode('utf-8', errors='replace') if stderr else '',
+        )
 
-        stdout = out_bytes.decode('utf-8', errors='replace') if out_bytes else ''
-        stderr = err_bytes.decode('utf-8', errors='replace') if err_bytes else ''
-        return res.exit_code, stdout, stderr
+    async def _restart_container(self) -> None:
+        """Kill and restart the container, waiting until it is ready."""
+        if not self.container or not self.client:
+            raise RuntimeError('Container is not running')
+        await self._run_blocking(self.container.kill)
+        await self._start_container()
+
+    async def _reset_after_interrupted_exec(self) -> None:
+        """Restore a clean sandbox after an interrupted Docker exec."""
+        self.update_status(SandboxStatus.INITIALIZING)
+        try:
+            await self._restart_container()
+        except BaseException as exc:
+            self.update_status(SandboxStatus.ERROR)
+            self.metadata['error'] = str(exc)
+            logger.error(f'Failed to reset sandbox after interrupted exec: {exc}')
+            raise
+        self.update_status(SandboxStatus.RUNNING)
 
     @staticmethod
     def _wrap_command_timeout(command: Union[str, List[str]], timeout: Optional[int]) -> Union[str, List[str]]:
@@ -276,6 +266,8 @@ class DockerSandbox(Sandbox):
         Returns:
             CommandResult with status, exit_code, stdout and stderr
         """
+        if self.status == SandboxStatus.ERROR:
+            raise RuntimeError('Sandbox is in error state')
         if not self.container or not self.client:
             raise RuntimeError('Container is not running')
 
@@ -283,40 +275,20 @@ class DockerSandbox(Sandbox):
         exec_command = self._wrap_command_timeout(command, timeout)
         wait_timeout = self._outer_timeout(timeout)
 
-        if not stream:
-            try:
-                started_at = time.monotonic()
-                exit_code, stdout, stderr = await asyncio.wait_for(
-                    self._run_blocking(self._run_buffered, exec_command), timeout=wait_timeout
-                )
-                if self._is_timeout_exit(exit_code, timeout, started_at):
-                    status = ExecutionStatus.TIMEOUT
-                    exit_code = -1
-                    stderr = stderr or f'Command timed out after {timeout} seconds'
-                else:
-                    status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.ERROR
-                return CommandResult(
-                    command=original_command, status=status, exit_code=exit_code, stdout=stdout, stderr=stderr
-                )
-            except asyncio.TimeoutError:
-                return CommandResult(
-                    command=original_command,
-                    status=ExecutionStatus.TIMEOUT,
-                    exit_code=-1,
-                    stdout='',
-                    stderr=f'Command timed out after {timeout} seconds',
-                )
-            except Exception as e:
-                return CommandResult(
-                    command=original_command, status=ExecutionStatus.ERROR, exit_code=-1, stdout='', stderr=str(e)
-                )
-
-        # Streaming path: keep exec_id so we can exec_kill on cancel/timeout.
-        exec_meta = await self._run_blocking(
-            self.client.api.exec_create, container=self.container.id, cmd=exec_command, tty=False
+        exec_creation = asyncio.create_task(
+            self._run_blocking(self.client.api.exec_create, container=self.container.id, cmd=exec_command, tty=False)
         )
-        exec_id = exec_meta['Id']
+        try:
+            exec_meta = await asyncio.shield(exec_creation)
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(exec_creation)
+            except Exception:
+                pass
+            await self._reset_after_interrupted_exec()
+            raise
 
+        exec_id = exec_meta['Id']
         stdout_parts: List[str] = []
         stderr_parts: List[str] = []
 
@@ -335,7 +307,15 @@ class DockerSandbox(Sandbox):
 
         try:
             started_at = time.monotonic()
-            await asyncio.wait_for(_consume(), timeout=wait_timeout)
+            if stream:
+                await asyncio.wait_for(_consume(), timeout=wait_timeout)
+            else:
+                stdout, stderr = await asyncio.wait_for(
+                    self._run_blocking(self._start_exec_buffered, exec_id), timeout=wait_timeout
+                )
+                stdout_parts.append(stdout)
+                stderr_parts.append(stderr)
+
             inspect = await self._run_blocking(self.client.api.exec_inspect, exec_id)
             exit_code = inspect.get('ExitCode')
             if exit_code is None:
@@ -355,7 +335,7 @@ class DockerSandbox(Sandbox):
                 stderr=stderr,
             )
         except asyncio.TimeoutError:
-            await self._kill_exec_safe(exec_id)
+            await self._reset_after_interrupted_exec()
             return CommandResult(
                 command=original_command,
                 status=ExecutionStatus.TIMEOUT,
@@ -364,10 +344,10 @@ class DockerSandbox(Sandbox):
                 stderr=f'Command timed out after {timeout} seconds',
             )
         except asyncio.CancelledError:
-            await self._kill_exec_safe(exec_id)
+            await self._reset_after_interrupted_exec()
             raise
         except Exception as e:
-            await self._kill_exec_safe(exec_id)
+            await self._reset_after_interrupted_exec()
             return CommandResult(
                 command=original_command,
                 status=ExecutionStatus.ERROR,
