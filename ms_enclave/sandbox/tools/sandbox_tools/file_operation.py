@@ -31,23 +31,13 @@ class FileOperation(SandboxTool):
             'operation': {
                 'type': 'string',
                 'description': 'Type of file operation to perform',
-                'enum': ['create', 'read', 'write', 'delete', 'list', 'exists']
+                'enum': ['create', 'read', 'write', 'delete', 'list', 'exists'],
             },
-            'file_path': {
-                'type': 'string',
-                'description': 'Path to the file or directory'
-            },
-            'content': {
-                'type': 'string',
-                'description': 'Content to write to file (only for write operation)'
-            },
-            'encoding': {
-                'type': 'string',
-                'description': 'File encoding',
-                'default': 'utf-8'
-            }
+            'file_path': {'type': 'string', 'description': 'Path to the file or directory'},
+            'content': {'type': 'string', 'description': 'Content to write to file (only for write operation)'},
+            'encoding': {'type': 'string', 'description': 'File encoding', 'default': 'utf-8'},
         },
-        required=['operation', 'file_path']
+        required=['operation', 'file_path'],
     )
 
     async def execute(
@@ -56,7 +46,7 @@ class FileOperation(SandboxTool):
         operation: str,
         file_path: str,
         content: Optional[str] = None,
-        encoding: str = 'utf-8'
+        encoding: str = 'utf-8',
     ) -> ToolResult:
         """Perform file operations in the Docker container.
 
@@ -88,7 +78,7 @@ class FileOperation(SandboxTool):
                         tool_name=self.name,
                         status=ExecutionStatus.ERROR,
                         output='',
-                        error='Content is required for write operation'
+                        error='Content is required for write operation',
                     )
                 return await self._write_file(sandbox_context, file_path, content, encoding)
             elif operation == 'delete':
@@ -107,7 +97,7 @@ class FileOperation(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output='',
-                    error=f'Unknown operation: {operation}'
+                    error=f'Unknown operation: {operation}',
                 )
 
         except Exception as e:
@@ -138,7 +128,7 @@ class FileOperation(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output='',
-                    error=result.stderr or f'Failed to read file: {file_path}'
+                    error=result.stderr or f'Failed to read file: {file_path}',
                 )
         except Exception as e:
             return ToolResult(
@@ -187,14 +177,14 @@ class FileOperation(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output='',
-                    error=f'Failed to copy file to target location: {copy_result.stderr or "Unknown error"}'
+                    error=f'Failed to copy file to target location: {copy_result.stderr or "Unknown error"}',
                 )
 
             return ToolResult(
                 tool_name=self.name,
                 status=ExecutionStatus.SUCCESS,
                 output=f'File written successfully: {file_path}',
-                error=None
+                error=None,
             )
         except Exception as e:
             return ToolResult(
@@ -222,14 +212,14 @@ class FileOperation(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.SUCCESS,
                     output=f'Successfully deleted: {file_path}',
-                    error=None
+                    error=None,
                 )
             else:
                 return ToolResult(
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output='',
-                    error=result.stderr or f'Failed to delete: {file_path}'
+                    error=result.stderr or f'Failed to delete: {file_path}',
                 )
         except Exception as e:
             return ToolResult(
@@ -259,7 +249,7 @@ class FileOperation(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output='',
-                    error=result.stderr or f'Failed to list directory: {dir_path}'
+                    error=result.stderr or f'Failed to list directory: {dir_path}',
                 )
         except Exception as e:
             return ToolResult(
@@ -288,7 +278,7 @@ class FileOperation(SandboxTool):
                 tool_name=self.name,
                 status=ExecutionStatus.SUCCESS,
                 output=f'{"exists" if exists else "does not exist"}',
-                error=None
+                error=None,
             )
         except Exception as e:
             return ToolResult(

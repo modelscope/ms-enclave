@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 @register_tool('shell_executor')
 class ShellExecutor(SandboxTool):
-
     _name = 'shell_executor'
     _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
     _description = 'Execute shell commands in an isolated environment'
@@ -22,24 +21,18 @@ class ShellExecutor(SandboxTool):
         type='object',
         properties={
             'command': {
-                'anyOf': [{
-                    'type': 'string',
-                    'description': 'Shell command to execute'
-                }, {
-                    'type': 'array',
-                    'items': {
-                        'type': 'string'
+                'anyOf': [
+                    {'type': 'string', 'description': 'Shell command to execute'},
+                    {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'List of shell command arguments to execute',
                     },
-                    'description': 'List of shell command arguments to execute'
-                }]
+                ]
             },
-            'timeout': {
-                'type': 'integer',
-                'description': 'Execution timeout in seconds',
-                'default': 30
-            }
+            'timeout': {'type': 'integer', 'description': 'Execution timeout in seconds', 'default': 30},
         },
-        required=['command']
+        required=['command'],
     )
 
     async def execute(
@@ -71,21 +64,21 @@ class ShellExecutor(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.TIMEOUT,
                     output=result.stdout,
-                    error=result.stderr if result.stderr else f'Command timed out after {timeout} seconds'
+                    error=result.stderr if result.stderr else f'Command timed out after {timeout} seconds',
                 )
             if result.exit_code == 0:
                 return ToolResult(
                     tool_name=self.name,
                     status=ExecutionStatus.SUCCESS,
                     output=result.stdout,
-                    error=result.stderr if result.stderr else None
+                    error=result.stderr if result.stderr else None,
                 )
             else:
                 return ToolResult(
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output=result.stdout,
-                    error=result.stderr if result.stderr else f'Command failed with exit code {result.exit_code}'
+                    error=result.stderr if result.stderr else f'Command failed with exit code {result.exit_code}',
                 )
 
         except Exception as e:

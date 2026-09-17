@@ -117,6 +117,20 @@ print(f"Squares: {data}")
         finally:
             sandbox._executor.shutdown(wait=False, cancel_futures=True)
 
+    async def test_interrupted_exec_reset_failure_marks_sandbox_error(self):
+        sandbox = DockerSandbox(DockerSandboxConfig(image='example:latest'))
+        sandbox.client = MagicMock()
+        sandbox.container = MagicMock()
+        sandbox._run_blocking = AsyncMock(side_effect=RuntimeError('kill failed'))
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'kill failed'):
+                await sandbox._reset_after_interrupted_exec()
+            self.assertEqual(sandbox.status, SandboxStatus.ERROR)
+            with self.assertRaisesRegex(RuntimeError, 'error state'):
+                await sandbox.execute_command(['echo', 'unreachable'])
+        finally:
+            sandbox._executor.shutdown(wait=False, cancel_futures=True)
+
 
 
 if __name__ == '__main__':

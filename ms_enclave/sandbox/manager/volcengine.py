@@ -50,8 +50,7 @@ class VolcengineSandboxManager(SandboxManager):
     def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         if config is None:
             raise ValueError(
-                'VolcengineSandboxManager requires a VolcengineSandboxManagerConfig '
-                '(with at least `base_url`).'
+                'VolcengineSandboxManager requires a VolcengineSandboxManagerConfig (with at least `base_url`).'
             )
         if not isinstance(config, VolcengineSandboxManagerConfig):
             # Best-effort upcast: build a VolcengineSandboxManagerConfig from the

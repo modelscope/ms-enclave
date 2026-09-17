@@ -206,7 +206,7 @@ class Sandbox(abc.ABC):
             created_at=self.created_at,
             updated_at=self.updated_at,
             metadata=self.metadata,
-            available_tools=self.get_available_tools()
+            available_tools=self.get_available_tools(),
         )
 
     async def __aenter__(self):
@@ -239,7 +239,7 @@ class SandboxFactory:
         cls,
         sandbox_type: SandboxType,
         config: Optional[Union[SandboxConfig, Dict]] = None,
-        sandbox_id: Optional[str] = None
+        sandbox_id: Optional[str] = None,
     ) -> Sandbox:
         """Create a sandbox instance.
 

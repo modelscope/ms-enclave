@@ -13,8 +13,9 @@ class SandboxManagerConfig(BaseModel):
     api_key: Optional[str] = Field(None, description='API key for authentication')
     cleanup_interval: Optional[int] = Field(default=None, description='Cleanup interval in seconds')
     pool_size: int = Field(default=0, description='Sandbox pool size (0 = disabled)')
-    sandbox_config: Optional[Union['SandboxConfig',
-                                   Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
+    sandbox_config: Optional[Union['SandboxConfig', Dict[str, Any]]] = Field(
+        None, description='Default sandbox configuration for pool'
+    )
 
     @field_validator('pool_size')
     def validate_pool_size(cls, v):
@@ -37,8 +38,9 @@ class SandboxConfig(BaseModel):
     """Base sandbox configuration."""
 
     timeout: int = Field(default=30, description='Default timeout in seconds')
-    tools_config: Union[List[str], Dict[str, Dict[
-        str, Any]]] = Field(default_factory=dict, description='Configuration for tools within the sandbox')
+    tools_config: Union[List[str], Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict, description='Configuration for tools within the sandbox'
+    )
     working_dir: str = Field(default='/sandbox', description='Default working directory')
     env_vars: Dict[str, str] = Field(default_factory=dict, description='Environment variables')
     resource_limits: Dict[str, Any] = Field(default_factory=dict, description='Resource limits')
@@ -65,14 +67,14 @@ class DockerSandboxConfig(SandboxConfig):
     command: Optional[Union[str, List[str]]] = Field(None, description='Container command')
     volumes: Dict[str, Dict[str, str]] = Field(
         default_factory=dict,
-        description="Volume mounts. Format: { host_path: {'bind': container_path, 'mode': 'rw|ro'} }"
+        description="Volume mounts. Format: { host_path: {'bind': container_path, 'mode': 'rw|ro'} }",
     )
     ports: Dict[str, Union[int, str, Tuple[str, int]]] = Field(default_factory=dict, description='Port mappings')
     network: Optional[str] = Field('bridge', description='Network name')
     extra_hosts: Dict[str, str] = Field(
         default_factory=dict,
         description=(
-            'Additional ``hostname -> ip`` entries written to the container\'s /etc/hosts. '
+            "Additional ``hostname -> ip`` entries written to the container's /etc/hosts. "
             'Use the special value ``host-gateway`` to resolve a hostname to the Docker host '
             '(e.g. ``{"host.docker.internal": "host-gateway"}`` so processes inside the '
             'container can reach a service on the host on Linux, where the alias is not '
@@ -82,7 +84,7 @@ class DockerSandboxConfig(SandboxConfig):
     platform: Optional[str] = Field(
         default=None,
         description='Docker platform (e.g. "linux/amd64"). Required when the image arch differs from the host '
-        '(e.g. amd64 image on Apple Silicon).'
+        '(e.g. amd64 image on Apple Silicon).',
     )
     memory_limit: str = Field(default='4g', description='Memory limit')
     cpu_limit: float = Field(default=2.0, description='CPU limit')
@@ -91,11 +93,11 @@ class DockerSandboxConfig(SandboxConfig):
     remove_on_exit: bool = Field(default=True, description='Remove container on exit')
     pull_progress: bool = Field(
         default=False,
-        description='If True, stream image pull progress to the logger (aggregated every pull_progress_interval seconds).'
+        description='If True, stream image pull progress to the logger (aggregated every pull_progress_interval seconds).',
     )
     pull_progress_interval: float = Field(
         default=3.0,
-        description='Seconds between aggregated pull-progress log lines (only used when pull_progress=True).'
+        description='Seconds between aggregated pull-progress log lines (only used when pull_progress=True).',
     )
     docker_executor_workers: int = Field(
         default=8, description='Max worker threads in the dedicated thread pool used for blocking docker SDK calls.'
@@ -108,6 +110,7 @@ class DockerSandboxConfig(SandboxConfig):
             raise ValueError('Memory limit must be a string')
         # Basic validation for memory format (e.g., '512m', '1g', '2G')
         import re
+
         if not re.match(r'^\d+[kmgKMG]?$', v):
             raise ValueError('Invalid memory limit format')
         return v
@@ -173,9 +176,9 @@ class VolcengineSandboxConfig(SandboxConfig):
     )
 
     # ---- Sandbox-local options ----
-    tool_language_map: Dict[
-        str,
-        str] = Field(default_factory=dict, description='Per-tool language override, e.g. {"shell_executor": "bash"}.')
+    tool_language_map: Dict[str, str] = Field(
+        default_factory=dict, description='Per-tool language override, e.g. {"shell_executor": "bash"}.'
+    )
 
     @field_validator('base_url')
     @classmethod
@@ -202,9 +205,9 @@ class VolcengineSandboxManagerConfig(SandboxManagerConfig):
     run_code_path: str = Field(default='/run_code', description='Path of the run_code endpoint')
     extra_headers: Optional[Dict[str, str]] = Field(None, description='Extra HTTP headers to attach to every request')
     max_concurrency: int = Field(default=16, description='Maximum concurrent requests shared by this manager')
-    dataset_language_map: Optional[
-        Dict[str, str]
-    ] = Field(None, description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).')
+    dataset_language_map: Optional[Dict[str, str]] = Field(
+        None, description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).'
+    )
 
     @field_validator('base_url')
     def validate_base_url(cls, v):
