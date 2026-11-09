@@ -190,6 +190,19 @@ async def test_docker_capabilities(capabilities: list[str]) -> None:
         sandbox._executor.shutdown(wait=False, cancel_futures=True)
 
 
+async def test_docker_unrestricted_resources() -> None:
+    defaults = DockerSandboxConfig()
+    assert defaults.memory_limit == '4g' and defaults.cpu_limit == 2
+    sandbox = DockerSandbox(DockerSandboxConfig(memory_limit=None, cpu_limit=None))
+    sandbox.client = MagicMock()
+    sandbox._run_blocking = AsyncMock(return_value=MagicMock())
+    try:
+        await sandbox._create_container()
+        assert not {'mem_limit', 'cpu_quota', 'cpu_period'} & sandbox._run_blocking.await_args.kwargs.keys()
+    finally:
+        sandbox._executor.shutdown(wait=False, cancel_futures=True)
+
+
 @pytest.mark.parametrize('failures', [0, 1, 2, 3])
 async def test_retry_connection_failures(failures: int, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(connection_module.asyncio, 'sleep', AsyncMock())

@@ -90,8 +90,8 @@ class DockerSandboxConfig(SandboxConfig):
         description='Docker platform (e.g. "linux/amd64"). Required when the image arch differs from the host '
         '(e.g. amd64 image on Apple Silicon).',
     )
-    memory_limit: str = Field(default='4g', description='Memory limit')
-    cpu_limit: float = Field(default=2.0, description='CPU limit')
+    memory_limit: Optional[str] = Field(default='4g', description='Memory limit; None means unrestricted')
+    cpu_limit: Optional[float] = Field(default=2.0, description='CPU limit; None means unrestricted')
     network_enabled: bool = Field(default=True, description='Enable network access')
     privileged: bool = Field(default=False, description='Run in privileged mode')
     remove_on_exit: bool = Field(default=True, description='Remove container on exit')
@@ -110,6 +110,8 @@ class DockerSandboxConfig(SandboxConfig):
     @field_validator('memory_limit')
     def validate_memory_limit(cls, v):
         """Validate memory limit format."""
+        if v is None:
+            return v
         if not isinstance(v, str):
             raise ValueError('Memory limit must be a string')
         # Basic validation for memory format (e.g., '512m', '1g', '2G')
@@ -122,7 +124,7 @@ class DockerSandboxConfig(SandboxConfig):
     @field_validator('cpu_limit')
     def validate_cpu_limit(cls, v):
         """Validate CPU limit."""
-        if v <= 0:
+        if v is not None and v <= 0:
             raise ValueError('CPU limit must be positive')
         return v
 
