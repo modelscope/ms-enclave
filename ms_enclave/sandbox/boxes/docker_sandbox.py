@@ -536,6 +536,8 @@ class DockerSandbox(Sandbox):
 
             # Privileged mode
             container_config['privileged'] = self.config.privileged
+            if self.config.cap_add:
+                container_config['cap_add'] = list(self.config.cap_add)
 
             # Platform (e.g. linux/amd64 for amd64 images on Apple Silicon)
             if self.config.platform:

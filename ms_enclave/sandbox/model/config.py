@@ -1,8 +1,11 @@
 """Configuration data models."""
 
+import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+
+from ..utils.e2b_helpers import BuildMode, E2BProvider, detect_provider, infer_region
 
 
 class SandboxManagerConfig(BaseModel):
@@ -60,6 +63,7 @@ class DockerSandboxConfig(SandboxConfig):
     """Docker-specific sandbox configuration."""
 
     image: str = Field('python:3.11-slim', description='Docker image name')
+    cap_add: List[str] = Field(default_factory=list, description='Additional Linux capabilities')
     entrypoint: Optional[Union[str, List[str]]] = Field(
         None,
         description='Container entrypoint override. Use an empty list to clear the image entrypoint.',
@@ -121,6 +125,71 @@ class DockerSandboxConfig(SandboxConfig):
         if v <= 0:
             raise ValueError('CPU limit must be positive')
         return v
+
+
+class E2BSandboxManagerConfig(SandboxManagerConfig):
+    """Connection and concurrency settings for an E2B-compatible service."""
+
+    model_config = ConfigDict(extra='forbid', hide_input_in_errors=True)
+
+    api_key: Optional[SecretStr] = None
+    api_url: Optional[str] = None
+    domain: Optional[str] = None
+    max_sandboxes: int = Field(default=16, gt=0)
+    max_concurrent_builds: int = Field(default=4, gt=0)
+    build_mode: Optional[BuildMode] = None
+    image_region: Optional[str] = None
+    image_mapping: Dict[str, str] = Field(default_factory=dict, repr=False)
+    run_id: Optional[str] = None
+
+    @model_validator(mode='after')
+    def _validate_connection(self) -> 'E2BSandboxManagerConfig':
+        if self.api_key is None or not self.api_key.get_secret_value():
+            self.api_key = SecretStr(os.environ.get('E2B_API_KEY', ''))
+        if not self.api_key.get_secret_value():
+            raise ValueError(
+                'E2B api_key is missing: set sandbox.manager_config.api_key or the E2B_API_KEY environment variable.'
+            )
+        if self.provider != 'aliyun' and self.build_mode == 'micro':
+            raise ValueError("build_mode='micro' is only supported by Aliyun Agent Sandbox.")
+        return self
+
+    @property
+    def provider(self) -> E2BProvider:
+        """Return the provider inferred from the endpoint."""
+        return detect_provider(self.domain, self.api_url)
+
+    @property
+    def target_region(self) -> Optional[str]:
+        """Return an explicit or endpoint-derived image region."""
+        return self.image_region or infer_region(self.domain, self.api_url)
+
+    @property
+    def resolved_build_mode(self) -> BuildMode:
+        """Return the provider's default build mode unless overridden."""
+        return self.build_mode or ('micro' if self.provider == 'aliyun' else 'container')
+
+
+class E2BSandboxConfig(SandboxConfig):
+    """Image or template and fixed lifetime for one remote sandbox."""
+
+    model_config = ConfigDict(extra='forbid', hide_input_in_errors=True)
+
+    image: Optional[str] = None
+    template: Optional[str] = None
+    user: str = 'user'
+    working_dir: str = '/home/user'
+    sandbox_timeout: int = Field(default=3600, gt=0)
+    cpu_count: int = Field(default=2, gt=0)
+    memory_mb: int = Field(default=4096, gt=0)
+    disk_size_mb: int = Field(default=15360, gt=0)
+    allow_internet_access: bool = True
+
+    @model_validator(mode='after')
+    def _validate_source(self) -> 'E2BSandboxConfig':
+        if not self.image and not self.template:
+            raise ValueError('E2B sandbox config requires either `template` or `image`.')
+        return self
 
 
 class DockerNotebookConfig(DockerSandboxConfig):

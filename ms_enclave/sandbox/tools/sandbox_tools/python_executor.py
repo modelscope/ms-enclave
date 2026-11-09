@@ -9,13 +9,13 @@ from ms_enclave.sandbox.tools.sandbox_tool import SandboxTool
 from ms_enclave.sandbox.tools.tool_info import ToolParams
 
 if TYPE_CHECKING:
-    from ms_enclave.sandbox.boxes import DockerSandbox, VolcengineSandbox
+    from ms_enclave.sandbox.boxes import Sandbox, VolcengineSandbox
 
 
 @register_tool('python_executor')
 class PythonExecutor(SandboxTool):
     _name = 'python_executor'
-    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
+    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE, SandboxType.E2B]
     _description = 'Execute Python code in an isolated environment using IPython'
     _parameters = ToolParams(
         type='object',
@@ -26,7 +26,7 @@ class PythonExecutor(SandboxTool):
         required=['code'],
     )
 
-    async def execute(self, sandbox_context: 'DockerSandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
+    async def execute(self, sandbox_context: 'Sandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
         """Execute Python code by writing to a temporary file and executing it."""
 
         if not code.strip():
