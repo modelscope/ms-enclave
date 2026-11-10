@@ -28,3 +28,22 @@ jobs:
 
       - name: Run pre-commit
         run: pre-commit run --all-files
+
+  e2b-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev,docker,e2b]'
+
+      - name: Run E2B regressions without provider calls
+        run: python -m pytest tests/test_e2b_helpers.py tests/test_e2b_sandbox.py -q
