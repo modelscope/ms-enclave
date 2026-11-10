@@ -14,7 +14,7 @@
 
 ## Requirements
 
-- Python ≥ 3.10
+- Python ≥ 3.11, with no upper version bound declared by ms-enclave
 - OS: Linux / macOS / Windows (with Docker)
 - A working Docker daemon; port 8888 must be free for the Notebook sandbox
 

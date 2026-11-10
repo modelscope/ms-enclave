@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%E2%89%A53.10-5be.svg">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.11-5be.svg">
 <a href="https://badge.fury.io/py/ms-enclave"><img src="https://badge.fury.io/py/ms-enclave.svg" alt="PyPI version" height="18"></a>
 <a href="https://pypi.org/project/ms-enclave"><img alt="PyPI - Downloads" src="https://static.pepy.tech/badge/ms-enclave"></a>
 <a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
@@ -34,7 +34,7 @@ ms-enclave is a modular and stable sandbox runtime environment that provides a s
 
 ## System Requirements
 
-- Python >= 3.10
+- Python >= 3.11, with no upper version bound declared by ms-enclave
 - Operating System: Linux, macOS, or Windows with Docker support
 - Docker daemon available on local machine (Notebook sandbox requires port 8888 open)
 
@@ -459,7 +459,7 @@ git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 
 # Create virtual environment
-conda create -n ms-enclave python=3.10 -y
+conda create -n ms-enclave python=3.11 -y
 conda activate ms-enclave
 
 # Install dependencies

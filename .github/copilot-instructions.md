@@ -16,7 +16,7 @@ Purpose: a modular sandbox runtime around Docker with both local and HTTP-manage
   - `tools/`: Tool framework: `Tool` ABC + `ToolFactory` + `@register_tool`; built-ins in `tools/sandbox_tools/` wired via `tools/__init__.py`.
 
 ## Dev + run
-- Python >= 3.10. Install: editable dev `pip install -e ".[dev]"`; add Docker extras `pip install -e ".[docker]"`.
+- Python >= 3.11, with no upper version bound declared by ms-enclave. Install: editable dev `pip install -e ".[dev]"`; add Docker extras `pip install -e ".[docker]"`.
 - Run server: `python -m ms_enclave.run_server` (default 0.0.0.0:8000). Programmatic: `from ms_enclave.sandbox import create_server; create_server().run(...)`.
 - HTTP API (FastAPI):
   - POST `/sandbox/create?sandbox_type=docker` body=config

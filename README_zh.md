@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%E2%89%A53.10-5be.svg">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.11-5be.svg">
 <a href="https://badge.fury.io/py/ms-enclave"><img src="https://badge.fury.io/py/ms-enclave.svg" alt="PyPI version" height="18"></a>
 <a href="https://pypi.org/project/ms-enclave"><img alt="PyPI - Downloads" src="https://static.pepy.tech/badge/ms-enclave"></a>
 <a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
@@ -36,7 +36,7 @@ ms-enclave 是一个模块化且稳定的沙箱运行时环境，为应用程序
 
 ## 系统要求
 
-- Python >= 3.10
+- Python >= 3.11，ms-enclave 本身不设版本上限
 - 操作系统：Linux、macOS 或支持 Docker 的 Windows
 - 需本机可用的 Docker 守护进程（Notebook 沙箱需开放 8888 端口）
 
@@ -464,7 +464,7 @@ git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 
 # 创建虚拟环境
-conda create -n ms-enclave python=3.10 -y
+conda create -n ms-enclave python=3.11 -y
 conda activate ms-enclave
 
 # 安装依赖
