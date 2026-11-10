@@ -5,8 +5,9 @@
 在安装 ms-enclave 之前，请确保您的环境满足以下要求：
 
 *   **Python**: 版本 >= 3.11
-*   **Docker**: 必须安装并运行 Docker Daemon。这是 ms-enclave 创建隔离沙箱的基础。
+*   **Docker 后端**: 必须安装并运行 Docker Daemon。
     *   如果您打算使用 `Notebook` 沙箱，请确保 Docker 容器可以对外暴露 8888 端口。
+*   **E2B 后端**: 需要兼容 E2B 的服务及 API Key，无需本机 Docker。
 
 ## 安装
 
@@ -22,6 +23,12 @@ pip install ms-enclave
 
 ```bash
 pip install 'ms-enclave[docker]'
+```
+
+使用 [E2B 远程沙箱](../deployment/e2b.md)时，安装：
+
+```bash
+pip install 'ms-enclave[e2b]'
 ```
 
 ### 从源码安装

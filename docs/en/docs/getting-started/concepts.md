@@ -57,6 +57,11 @@ A sandbox is an isolated environment for secure code execution.
 - DockerNotebook (`docker_notebook`):
   - Extends DockerSandbox with Jupyter Kernel Gateway for interactive Python via HTTP/WebSocket.
   - Inherits Docker config and adds kernel port settings.
+- E2BSandbox (`e2b`):
+  - Keeps command and file state in an E2B-compatible remote service; no local Docker is required.
+  - `E2BSandboxConfig` selects a `template` or `image` and a fixed `sandbox_timeout`. `E2BSandboxManagerConfig` owns connection and concurrency settings. See [E2B remote sandbox](../deployment/e2b.md).
+
+Docker's `memory_limit` and `cpu_limit` accept `None` to disable their limits; `cap_add` adds Linux capabilities. E2B build resources use separate `cpu_count` and `memory_mb` fields.
 
 ## 2. Tool System
 

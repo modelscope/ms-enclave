@@ -8,6 +8,8 @@ This page lists the configuration data models (Pydantic) for sandboxes and manag
 
 ::: ms_enclave.sandbox.model.config.VolcengineSandboxManagerConfig
 
+::: ms_enclave.sandbox.model.config.E2BSandboxManagerConfig
+
 ## Sandbox Configuration
 
 ::: ms_enclave.sandbox.model.config.SandboxConfig
@@ -17,6 +19,8 @@ This page lists the configuration data models (Pydantic) for sandboxes and manag
 ::: ms_enclave.sandbox.model.config.DockerNotebookConfig
 
 ::: ms_enclave.sandbox.model.config.VolcengineSandboxConfig
+
+::: ms_enclave.sandbox.model.config.E2BSandboxConfig
 
 ## Tool Configuration
 

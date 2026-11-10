@@ -5,8 +5,9 @@
 Before installing ms-enclave, ensure your environment meets the following:
 
 - Python: version >= 3.11
-- Docker: Docker daemon must be installed and running (ms-enclave relies on it for isolated sandboxes).
+- Docker backends: a Docker daemon must be installed and running.
   - If you plan to use the `Notebook` sandbox, ensure port 8888 can be exposed by containers.
+- E2B backend: an E2B-compatible service and API key; no local Docker daemon is required.
 
 ## Install
 
@@ -22,6 +23,12 @@ If you need Docker support (usually yes), install extra dependencies:
 
 ```bash
 pip install 'ms-enclave[docker]'
+```
+
+For [E2B-compatible remote sandboxes](../deployment/e2b.md), install:
+
+```bash
+pip install 'ms-enclave[e2b]'
 ```
 
 ### From source

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
-from ..utils.e2b_helpers import BuildMode, E2BProvider, detect_provider, infer_region
+from ms_enclave.sandbox.utils.e2b_helpers import BuildMode, E2BProvider, detect_provider, infer_region
 
 
 class SandboxManagerConfig(BaseModel):
@@ -137,7 +137,7 @@ class E2BSandboxManagerConfig(SandboxManagerConfig):
     api_key: Optional[SecretStr] = None
     api_url: Optional[str] = None
     domain: Optional[str] = None
-    max_sandboxes: int = Field(default=16, gt=0)
+    max_sandboxes: int = Field(default=16, gt=0, description='Maximum live sandboxes and pending capacity reservations')
     max_concurrent_builds: int = Field(default=4, gt=0)
     build_mode: Optional[BuildMode] = None
     image_region: Optional[str] = None
@@ -146,6 +146,9 @@ class E2BSandboxManagerConfig(SandboxManagerConfig):
 
     @model_validator(mode='after')
     def _validate_connection(self) -> 'E2BSandboxManagerConfig':
+        # Resolve SDK endpoint defaults here too, so provider/build selection agrees.
+        self.domain = self.domain or os.environ.get('E2B_DOMAIN')
+        self.api_url = self.api_url or os.environ.get('E2B_API_URL')
         if self.api_key is None or not self.api_key.get_secret_value():
             self.api_key = SecretStr(os.environ.get('E2B_API_KEY', ''))
         if not self.api_key.get_secret_value():

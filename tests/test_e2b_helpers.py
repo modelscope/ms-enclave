@@ -79,3 +79,9 @@ def test_image_normalization() -> None:
     assert normalize_image_ref(' swebench/task:latest ') == 'docker.io/swebench/task:latest'
     for image in ['docker.io/swebench/task:latest', 'localhost:5000/repo:t', 'ghcr.io/org/image:t']:
         assert normalize_image_ref(image) == image
+
+
+def test_provider_requires_dns_suffix_boundary() -> None:
+    assert detect_provider('notaliyuncs.com', None) == 'e2b_official'
+    assert detect_provider(None, 'https://notaliyuncs.com') == 'e2b_official'
+    assert infer_region('cn-hangzhou.notaliyuncs.com', None) is None

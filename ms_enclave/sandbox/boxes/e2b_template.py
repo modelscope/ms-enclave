@@ -5,11 +5,15 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Literal, Mapping, Optional, Set
 
+from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, retry_dispatch
+from ms_enclave.sandbox.model import E2BSandboxConfig
+from ms_enclave.sandbox.utils.e2b_helpers import (
+    build_template_name,
+    is_acr_image,
+    normalize_image_ref,
+    rewrite_acr_region,
+)
 from ms_enclave.utils import get_logger
-
-from ..model import E2BSandboxConfig
-from ..utils.e2b_helpers import build_template_name, is_acr_image, normalize_image_ref, rewrite_acr_region
-from .e2b_connection import AsyncTemplate, ConnectionConfig, E2BConnection, get_api_client, retry_dispatch
 
 logger = get_logger()
 TemplateSource = Literal['explicit', 'reused', 'built', 'rebuilt']
@@ -83,7 +87,7 @@ class E2BTemplateResolver:
                 raise E2BTemplateError(
                     self._conn.redact(
                         f'No converted ACR image for {image!r}; Aliyun Agent Sandbox cannot build templates from '
-                        'docker.io images. Add the image to the evalscope mapping or set sandbox.default_config.template.'
+                        'docker.io images. Add it to E2BSandboxManagerConfig.image_mapping or set E2BSandboxConfig.template.'
                     )
                 )
             image = mapped
@@ -109,8 +113,7 @@ class E2BTemplateResolver:
     async def _find(self, name: str, *, run_id: str) -> Optional[_RemoteTemplate]:
         async def fetch() -> Optional[_RemoteTemplate]:
             # Read raw JSON: compatible providers may omit generated-model fields.
-            client = get_api_client(ConnectionConfig(**self._conn.api_params(retries=0)))
-            async with client:
+            async with self._conn.api_client() as client:
                 response = await client.get_async_httpx_client().get('/templates')
                 response.raise_for_status()
                 for item in response.json():
@@ -122,12 +125,13 @@ class E2BTemplateResolver:
         return await retry_dispatch('template status', fetch, run_id=run_id, redactor=self._conn.redact)
 
     async def _delete(self, template_id: str) -> None:
-        client = get_api_client(ConnectionConfig(**self._conn.api_params(retries=0)))
-        async with client:
+        async with self._conn.api_client() as client:
             response = await client.get_async_httpx_client().delete(f'/templates/{template_id}')
             response.raise_for_status()
 
     async def _build(self, name: str, image: str, config: E2BSandboxConfig, *, run_id: str) -> None:
+        from e2b import AsyncTemplate
+
         headers = {}
         if self._conn.build_mode == 'micro':
             headers = {'X-E2B-Template-Build-Mode': 'micro', 'X-E2B-Template-Alpha-Disk-Size': str(config.disk_size_mb)}

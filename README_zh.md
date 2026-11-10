@@ -37,8 +37,9 @@ ms-enclave 是一个模块化且稳定的沙箱运行时环境，为应用程序
 ## 系统要求
 
 - Python >= 3.11
-- 操作系统：Linux、macOS 或支持 Docker 的 Windows
-- 需本机可用的 Docker 守护进程（Notebook 沙箱需开放 8888 端口）
+- 操作系统：Linux、macOS 或 Windows
+- Docker 后端需本机可用的 Docker 守护进程（Notebook 沙箱需开放 8888 端口）
+- [E2B 远程后端](docs/zh/docs/deployment/e2b.md)需兼容 E2B 的服务及 API Key，无需本机 Docker
 
 ## 安装
 
@@ -48,6 +49,8 @@ ms-enclave 是一个模块化且稳定的沙箱运行时环境，为应用程序
 pip install ms-enclave
 # 如果需要 Docker 支持，安装额外依赖
 pip install 'ms-enclave[docker]'
+# 如果使用兼容 E2B 的远程沙箱
+pip install 'ms-enclave[e2b]'
 ```
 
 ### 从源码安装
@@ -393,8 +396,9 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 ## 常用配置项
 
 - `image`: Docker 镜像名（如 `python:3.11-slim` 或 `jupyter-kernel-gateway`）
-- `memory_limit`: 内存限制（如 `512m`/`1g`）
-- `cpu_limit`: CPU 限制（float，>0）
+- `memory_limit`: 内存限制（如 `512m`/`1g`），设为 `None` 表示不限制
+- `cpu_limit`: CPU 限制（float，>0），设为 `None` 表示不限制
+- `cap_add`: 额外 Linux capabilities，如 `['SYS_ADMIN']`，默认为 `[]`
 - `volumes`: 卷挂载，形如 `{host_path: {"bind": "/container/path", "mode": "rw"}}`
 - `ports`: 端口映射，形如 `{ "8888/tcp": ("127.0.0.1", 8888) }`
 - `network_enabled`: 是否启用网络（Notebook 沙箱需 True）

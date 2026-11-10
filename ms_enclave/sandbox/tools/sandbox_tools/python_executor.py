@@ -49,7 +49,10 @@ class PythonExecutor(SandboxTool):
 
         try:
             # Write script to container to avoid long code errors
-            await sandbox_context.put_file(script_path, code)
+            if not await sandbox_context.put_file(script_path, code):
+                return ToolResult(
+                    tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='Failed to upload Python script'
+                )
 
             # Execute using python
             command = f'python {script_path}'

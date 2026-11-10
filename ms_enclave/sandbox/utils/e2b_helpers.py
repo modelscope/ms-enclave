@@ -17,13 +17,13 @@ REDACTED = '***'
 def detect_provider(domain: Optional[str], api_url: Optional[str]) -> E2BProvider:
     """Identify Aliyun endpoints by their host suffix."""
     hosts = (domain or '', (urlparse(api_url).hostname or '') if api_url else '')
-    return 'aliyun' if any(h.lower().endswith('aliyuncs.com') for h in hosts) else 'e2b_official'
+    return 'aliyun' if any(h.lower().endswith('.aliyuncs.com') for h in hosts) else 'e2b_official'
 
 
 def infer_region(domain: Optional[str], api_url: Optional[str]) -> Optional[str]:
     """Find a region DNS label in a new or legacy Aliyun endpoint."""
     for host in (domain, urlparse(api_url).hostname if api_url else None):
-        if host and host.lower().endswith('aliyuncs.com'):
+        if host and host.lower().endswith('.aliyuncs.com'):
             for label in host.lower().split('.'):
                 if _REGION_LABEL.fullmatch(label):
                     return label

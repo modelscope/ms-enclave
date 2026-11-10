@@ -7,26 +7,9 @@ from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 import httpx
 from pydantic import SecretStr
 
+from ms_enclave.sandbox.model import E2BSandboxManagerConfig
+from ms_enclave.sandbox.utils.e2b_helpers import BuildMode, E2BProvider, redact
 from ms_enclave.utils import get_logger
-
-from ..model import E2BSandboxManagerConfig
-from ..utils.e2b_helpers import BuildMode, E2BProvider, redact
-
-
-class _MissingE2BError(Exception):
-    """Placeholder exception when the optional SDK is unavailable."""
-
-
-try:
-    from e2b import AsyncSandbox, AsyncTemplate, CommandExitException, RateLimitException
-    from e2b.api.client_async import get_api_client
-    from e2b.connection_config import ConnectionConfig
-
-    _E2B_IMPORT_ERROR: Optional[ImportError] = None
-except ImportError as exc:
-    AsyncSandbox = AsyncTemplate = get_api_client = ConnectionConfig = None
-    CommandExitException = RateLimitException = _MissingE2BError
-    _E2B_IMPORT_ERROR = exc
 
 logger = get_logger()
 E2B_REQUEST_TIMEOUT_S = 60.0
@@ -35,11 +18,15 @@ T = TypeVar('T')
 
 
 def require_e2b() -> None:
-    """Fail with an installation hint when E2B was not installed."""
-    if _E2B_IMPORT_ERROR is not None:
+    """Load the optional SDK only when an E2B backend is requested."""
+    try:
+        import e2b
+    except ModuleNotFoundError as exc:
+        if exc.name != 'e2b':
+            raise
         raise ImportError(
             "The E2B sandbox requires the e2b SDK (Python >= 3.11): pip install 'ms-enclave[e2b]'"
-        ) from _E2B_IMPORT_ERROR
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -78,11 +65,20 @@ class E2BConnection:
         """Remove the connection key from diagnostic text."""
         return redact(text, self.api_key.get_secret_value())
 
+    def api_client(self) -> Any:
+        """Create an SDK API client with this connection's settings."""
+        from e2b.api.client_async import get_api_client
+        from e2b.connection_config import ConnectionConfig
+
+        return get_api_client(ConnectionConfig(**self.api_params(retries=0)))
+
 
 async def retry_dispatch(
     op_name: str, call: Callable[[], Awaitable[T]], *, run_id: str, redactor: Callable[[str], str]
 ) -> T:
     """Retry only connection establishment failures and explicit rate limits."""
+    from e2b import RateLimitException
+
     retryable = (ConnectionError, httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, RateLimitException)
     for attempt in range(1, _DISPATCH_ATTEMPTS + 1):
         try:

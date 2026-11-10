@@ -15,8 +15,9 @@
 ## Requirements
 
 - Python ≥ 3.11
-- OS: Linux / macOS / Windows (with Docker)
-- A working Docker daemon; port 8888 must be free for the Notebook sandbox
+- OS: Linux / macOS / Windows
+- Docker backends need a Docker daemon; port 8888 must be free for the Notebook sandbox
+- The [E2B backend](deployment/e2b.md) needs an E2B-compatible service and API key instead of local Docker
 
 ## Where to start
 
