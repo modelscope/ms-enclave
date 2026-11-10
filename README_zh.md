@@ -36,7 +36,7 @@ ms-enclave 是一个模块化且稳定的沙箱运行时环境，为应用程序
 
 ## 系统要求
 
-- Python >= 3.11，ms-enclave 本身不设版本上限
+- Python >= 3.11
 - 操作系统：Linux、macOS 或支持 Docker 的 Windows
 - 需本机可用的 Docker 守护进程（Notebook 沙箱需开放 8888 端口）
 

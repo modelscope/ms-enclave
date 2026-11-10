@@ -4,7 +4,7 @@
 
 在安装 ms-enclave 之前，请确保您的环境满足以下要求：
 
-*   **Python**: 版本 >= 3.11，ms-enclave 本身不设版本上限
+*   **Python**: 版本 >= 3.11
 *   **Docker**: 必须安装并运行 Docker Daemon。这是 ms-enclave 创建隔离沙箱的基础。
     *   如果您打算使用 `Notebook` 沙箱，请确保 Docker 容器可以对外暴露 8888 端口。
 

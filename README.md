@@ -34,7 +34,7 @@ ms-enclave is a modular and stable sandbox runtime environment that provides a s
 
 ## System Requirements
 
-- Python >= 3.11, with no upper version bound declared by ms-enclave
+- Python >= 3.11
 - Operating System: Linux, macOS, or Windows with Docker support
 - Docker daemon available on local machine (Notebook sandbox requires port 8888 open)
 

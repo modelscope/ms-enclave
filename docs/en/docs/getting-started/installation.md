@@ -4,7 +4,7 @@
 
 Before installing ms-enclave, ensure your environment meets the following:
 
-- Python: version >= 3.11, with no upper version bound declared by ms-enclave
+- Python: version >= 3.11
 - Docker: Docker daemon must be installed and running (ms-enclave relies on it for isolated sandboxes).
   - If you plan to use the `Notebook` sandbox, ensure port 8888 can be exposed by containers.
 

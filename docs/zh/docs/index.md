@@ -14,7 +14,7 @@
 
 ## 系统要求
 
-- Python ≥ 3.11，ms-enclave 本身不设版本上限
+- Python ≥ 3.11
 - 操作系统：Linux / macOS / Windows（需 Docker）
 - 本机 Docker 守护进程；使用 Notebook 沙箱时需开放 8888 端口
 
