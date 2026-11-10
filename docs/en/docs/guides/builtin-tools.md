@@ -2,6 +2,8 @@
 
 This page documents the parameters and typical usage of built-in tools. A tool must be declared in `tools_config` to be registered.
 
+The [E2B backend](../deployment/e2b.md) supports `python_executor` and `shell_executor`. Its template must provide the required executables. For files, use the sandbox's `put_file` / `put_dir` / `put_archive` APIs and shell commands; `file_operation` is not registered for E2B.
+
 ## python_executor
 
 Run Python code in the sandbox as a script (stateless: a fresh process per call; variables don't persist between calls).

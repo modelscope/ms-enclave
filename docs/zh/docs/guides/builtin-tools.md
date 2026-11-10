@@ -2,6 +2,8 @@
 
 本节列出内置工具的参数与典型用法。工具必须先在 `tools_config` 中声明才会注册。
 
+[E2B 后端](../deployment/e2b.md)支持 `python_executor` 和 `shell_executor`，模板需要提供对应可执行程序。文件上传使用沙箱的 `put_file` / `put_dir` / `put_archive` API，读取等操作使用 Shell 命令；E2B 不注册 `file_operation`。
+
 ## python_executor
 
 在沙箱中以脚本方式执行 Python 代码（无状态：每次独立进程，变量不跨调用保留）。

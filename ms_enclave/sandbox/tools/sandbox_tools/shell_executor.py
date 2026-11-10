@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 @register_tool('shell_executor')
 class ShellExecutor(SandboxTool):
     _name = 'shell_executor'
-    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
+    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE, SandboxType.E2B]
     _description = 'Execute shell commands in an isolated environment'
     _parameters = ToolParams(
         type='object',
@@ -38,7 +38,7 @@ class ShellExecutor(SandboxTool):
     async def execute(
         self, sandbox_context: 'Sandbox', command: Union[str, List[str]], timeout: Optional[int] = 30
     ) -> ToolResult:
-        """Execute shell command in the Docker container."""
+        """Execute a shell command in the sandbox."""
 
         if not command or (isinstance(command, str) and not command.strip()):
             return ToolResult(tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='No command provided')

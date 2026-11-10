@@ -3,17 +3,16 @@
 import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Union
-
-import docker
-from docker import DockerClient
-from docker.errors import APIError, ContainerError, ImageNotFound, NotFound
-from docker.models.containers import Container
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Union
 
 from ms_enclave.utils import get_logger
 
 from ..model import CommandResult, DockerSandboxConfig, ExecutionStatus, SandboxStatus, SandboxType
 from .base import Sandbox, register_sandbox
+
+if TYPE_CHECKING:
+    from docker import DockerClient
+    from docker.models.containers import Container
 
 logger = get_logger()
 
@@ -54,6 +53,8 @@ class DockerSandbox(Sandbox):
     async def start(self) -> None:
         """Start the Docker container."""
         try:
+            import docker
+
             self.update_status(SandboxStatus.INITIALIZING)
 
             # Initialize Docker client
@@ -137,6 +138,8 @@ class DockerSandbox(Sandbox):
         """Stop the container if it is running."""
         if not self.container:
             return
+        from docker.errors import NotFound
+
         try:
             await self._run_blocking(self.container.reload)
             if self.container.status == SandboxStatus.RUNNING:
@@ -358,6 +361,8 @@ class DockerSandbox(Sandbox):
 
     async def _ensure_image_exists(self) -> None:
         """Ensure Docker image exists."""
+        from docker.errors import ImageNotFound
+
         try:
             await self._run_blocking(self.client.images.get, self.config.image)
             return
@@ -536,6 +541,8 @@ class DockerSandbox(Sandbox):
 
             # Privileged mode
             container_config['privileged'] = self.config.privileged
+            if self.config.cap_add:
+                container_config['cap_add'] = list(self.config.cap_add)
 
             # Platform (e.g. linux/amd64 for amd64 images on Apple Silicon)
             if self.config.platform:

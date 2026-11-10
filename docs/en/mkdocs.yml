@@ -26,6 +26,7 @@ nav:
     - HTTP Server: deployment/http-server.md
     - HTTP Client: deployment/http-client.md
     - Volcengine Cloud Sandbox: deployment/volcengine.md
+    - E2B Remote Sandbox: deployment/e2b.md
   - Extending:
     - Registration Overview: extending/index.md
     - Custom Tool: extending/custom-tool.md

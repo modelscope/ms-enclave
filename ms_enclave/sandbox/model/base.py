@@ -23,6 +23,7 @@ class SandboxType(str, Enum):
     DOCKER_NOTEBOOK = 'docker_notebook'
     VOLCENGINE = 'volcengine'
     DUMMY = 'dummy'
+    E2B = 'e2b'
 
     @classmethod
     def get_compatible_types(cls, sandbox_type: 'SandboxType') -> Set['SandboxType']:
@@ -69,6 +70,7 @@ class SandboxManagerType(str, Enum):
     """Sandbox manager type enumeration."""
 
     LOCAL = 'local'
+    E2B = 'e2b'
     HTTP = 'http'
     VOLCENGINE = 'volcengine'
 

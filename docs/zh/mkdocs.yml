@@ -26,6 +26,7 @@ nav:
     - HTTP 服务: deployment/http-server.md
     - HTTP 客户端: deployment/http-client.md
     - Volcengine 云沙箱: deployment/volcengine.md
+    - E2B 远程沙箱: deployment/e2b.md
   - 扩展开发:
     - 注册机制总览: extending/index.md
     - 自定义 Tool: extending/custom-tool.md

@@ -15,6 +15,7 @@ from ..model import (
     CommandResult,
     DockerNotebookConfig,
     DockerSandboxConfig,
+    E2BSandboxConfig,
     SandboxConfig,
     SandboxInfo,
     SandboxStatus,
@@ -265,6 +266,8 @@ class SandboxFactory:
                 config = DockerNotebookConfig()
             elif sandbox_type == SandboxType.VOLCENGINE:
                 config = VolcengineSandboxConfig()
+            elif sandbox_type == SandboxType.E2B:
+                config = E2BSandboxConfig()
             else:
                 config = SandboxConfig()
         elif isinstance(config, dict):
@@ -274,6 +277,8 @@ class SandboxFactory:
                 config = DockerNotebookConfig(**config)
             elif sandbox_type == SandboxType.VOLCENGINE:
                 config = VolcengineSandboxConfig(**config)
+            elif sandbox_type == SandboxType.E2B:
+                config = E2BSandboxConfig(**config)
             else:
                 config = SandboxConfig(**config)
 
