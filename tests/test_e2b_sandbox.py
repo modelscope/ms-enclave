@@ -1087,3 +1087,53 @@ def test_sdk_import_failure_preserves_original_error(monkeypatch: pytest.MonkeyP
     with pytest.raises(type(error)) as raised:
         connection_module.require_e2b()
     assert raised.value is error
+
+
+@pytest.mark.parametrize('ready_before_cancel', [0, 1])
+async def test_cancelled_pool_start_releases_unused_slots(sdk: SimpleNamespace, ready_before_cancel: int) -> None:
+    entered, finish = asyncio.Event(), asyncio.Event()
+    remotes = []
+
+    async def create(**kwargs: object) -> FakeAsyncSandbox:
+        remote = FakeAsyncSandbox()
+        remotes.append(remote)
+        if len(remotes) == ready_before_cancel + 1:
+            entered.set()
+            await finish.wait()
+        return remote
+
+    sdk.create.side_effect = create
+    manager = E2BSandboxManager({'api_key': 'placeholder', 'max_sandboxes': 3})
+    await manager.start()
+    pool = asyncio.create_task(manager.initialize_pool(3, config={'template': 'explicit'}))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        pool.cancel()
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(pool, 1)
+        assert len(manager._reservations) == len(manager._sandboxes) == ready_before_cancel
+        remotes[-1].kill.assert_awaited_once()
+        members = await asyncio.wait_for(
+            manager.initialize_pool(3 - ready_before_cancel, config={'template': 'explicit'}), 1)
+        assert len(members) == 3 - ready_before_cancel
+    finally:
+        finish.set()
+        await manager.stop()
+
+
+async def test_pool_raises_when_every_member_fails(sdk: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = E2BSandboxManager({'api_key': 'placeholder', 'max_sandboxes': 2})
+    await manager.start()
+    start_reserved = manager._start_reserved
+    error = E2BError('provider unavailable')
+    monkeypatch.setattr(manager, '_start_reserved', AsyncMock(side_effect=error))
+    try:
+        with pytest.raises(E2BError) as raised:
+            await manager.initialize_pool(2, config={'template': 'explicit'})
+        assert raised.value is error
+        assert not manager._reservations and not manager._sandboxes
+        monkeypatch.setattr(manager, '_start_reserved', start_reserved)
+        assert len(await manager.initialize_pool(2, config={'template': 'explicit'})) == 2
+    finally:
+        await manager.stop()

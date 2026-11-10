@@ -189,6 +189,7 @@ class E2BSandboxManager(LocalSandboxManager):
                 sandboxes = [self._new_sandbox(config or self.config.sandbox_config) for _ in range(size)]
                 await self._reserve_capacity([box.id for box in sandboxes])
                 created_ids = []
+                last_error: Optional[Exception] = None
                 try:
                     await self._templates.resolve(sandboxes[0].config, run_id=self.run_id)
                     for sandbox in sandboxes:
@@ -199,6 +200,7 @@ class E2BSandboxManager(LocalSandboxManager):
                                 self._sandbox_pool.append(sandbox.id)
                                 created_ids.append(sandbox.id)
                         except Exception as exc:
+                            last_error = exc
                             logger.error(
                                 E2BError.from_exception(f'create pool member {sandbox.id}', exc, run_id=self.run_id)
                             )
@@ -206,6 +208,8 @@ class E2BSandboxManager(LocalSandboxManager):
                     await self._release_capacity([box.id for box in sandboxes if box.id not in self._sandboxes])
                     if created_ids:
                         self._pool_initialized = True
+                if not created_ids and last_error is not None and self._running:
+                    raise last_error
                 return created_ids
         finally:
             self._creating.discard(task)
