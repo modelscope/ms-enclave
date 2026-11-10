@@ -2,10 +2,11 @@
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import Dict, Literal, Mapping, Optional, Set
 
-from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, retry_dispatch
+from pydantic import BaseModel, ConfigDict
+
+from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, E2BError, retry_dispatch
 from ms_enclave.sandbox.model import E2BSandboxConfig
 from ms_enclave.sandbox.utils.e2b_helpers import (
     build_template_name,
@@ -22,14 +23,15 @@ _POLL_TIMEOUT_S = 3600.0
 _BUSY = {'building', 'waiting'}
 
 
-class E2BTemplateError(RuntimeError):
+class E2BTemplateError(E2BError):
     """A remote template could not be resolved or built."""
 
 
-@dataclass(frozen=True)
-class _RemoteTemplate:
+class _RemoteTemplate(BaseModel):
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
+
     template_id: str
-    status: str
+    status: Literal['building', 'waiting', 'ready', 'error']
 
 
 class E2BTemplateResolver:
@@ -67,15 +69,15 @@ class E2BTemplateResolver:
             try:
                 source = await self._ensure(name, image, config, run_id=run_id)
             except Exception as exc:
-                message = self._conn.redact(f'Failed to build E2B template {name!r} from image {image!r}: {exc}')
-                self._failed[name] = message
-                raise E2BTemplateError(message) from None
+                error = E2BTemplateError.from_exception(
+                    f'resolve template {name!r} from image {image!r}', exc, run_id=run_id
+                )
+                self._failed[name] = str(error)
+                raise error from None
             self._ready.add(name)
             logger.info(
-                self._conn.redact(
-                    f'E2B template {name} source={source} image={config.image} -> {image} '
-                    f'build_mode={self._conn.build_mode} elapsed={time.monotonic() - started:.1f}s run_id={run_id}'
-                )
+                f'E2B template {name} source={source} image={config.image} -> {image} '
+                f'build_mode={self._conn.build_mode} elapsed={time.monotonic() - started:.1f}s run_id={run_id}'
             )
         return name
 
@@ -85,10 +87,8 @@ class E2BTemplateResolver:
             mapped = self._mapping.get(normalize_image_ref(image))
             if mapped is None:
                 raise E2BTemplateError(
-                    self._conn.redact(
-                        f'No converted ACR image for {image!r}; Aliyun Agent Sandbox cannot build templates from '
-                        'docker.io images. Add it to E2BSandboxManagerConfig.image_mapping or set E2BSandboxConfig.template.'
-                    )
+                    f'No converted ACR image for {image!r}; Aliyun Agent Sandbox cannot build templates from '
+                    'docker.io images. Add it to E2BSandboxManagerConfig.image_mapping or set E2BSandboxConfig.template.'
                 )
             image = mapped
         return rewrite_acr_region(image, self._conn.region)
@@ -119,10 +119,10 @@ class E2BTemplateResolver:
                 for item in response.json():
                     names = (item.get('aliases') or []) + (item.get('names') or [])
                     if any(n == name or n.endswith(f'/{name}') for n in names):
-                        return _RemoteTemplate(item['templateID'], item['buildStatus'])
+                        return _RemoteTemplate(template_id=item['templateID'], status=item['buildStatus'])
             return None
 
-        return await retry_dispatch('template status', fetch, run_id=run_id, redactor=self._conn.redact)
+        return await retry_dispatch('template status', fetch, run_id=run_id)
 
     async def _delete(self, template_id: str) -> None:
         async with self._conn.api_client() as client:
@@ -145,7 +145,6 @@ class E2BTemplateResolver:
                 **self._conn.api_params(retries=0, api_headers=headers),
             ),
             run_id=run_id,
-            redactor=self._conn.redact,
         )
 
     async def _wait(self, name: str, *, run_id: str) -> Optional[_RemoteTemplate]:

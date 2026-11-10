@@ -82,6 +82,8 @@ config = E2BSandboxConfig(
 
 首次使用可能需要等待构建，之后会复用已有模板。只需设置 `template` 或 `image` 其中一个；同时设置时优先使用 `template`。
 
+自动创建的模板使用 `ms-enclave-` 前缀。要复用此前版本生成的模板，可将其名称显式填入 `template`，避免重新构建。
+
 阿里云需要使用已转换的 `fc-e2b-registry.<region>.cr.aliyuncs.com/...` 镜像，不能直接使用 Docker Hub 镜像。已有源镜像与转换镜像的对应表时，可通过 `E2BSandboxManagerConfig.image_mapping` 配置映射。镜像转换和私有仓库访问权限需提前准备。
 
 ## 上传文件与执行命令
@@ -120,5 +122,7 @@ E2B 支持 `python_executor` 和 `shell_executor`；`file_operation`、Notebook 
 | 停止返回 `False`，或删除、关闭管理器时报错 | 恢复服务连接后，重试 `delete_sandbox` 或 `manager.stop()`。 |
 
 网络中断时，远端沙箱可能仍在运行。可结合日志中的沙箱 ID、`run_id` 到服务控制台确认和清理资源，不能仅凭本地任务结束判断清理完成。
+
+服务调用失败时，错误信息会保留操作名称、错误类型和 HTTP 状态。服务响应原文可能包含凭据，因此不会直接写入日志；可结合服务控制台排查具体原因。
 
 更多参数及默认值见[配置 API](../api/config.md)。

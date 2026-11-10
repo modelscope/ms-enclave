@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from typing import Any, Dict, List, Optional, Set, Union
 
-from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, require_e2b
+from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, E2BError, require_e2b
 from ms_enclave.sandbox.boxes.e2b_sandbox import E2BSandbox
 from ms_enclave.sandbox.boxes.e2b_template import E2BTemplateResolver
 from ms_enclave.sandbox.manager.base import register_manager
@@ -134,7 +134,7 @@ class E2BSandboxManager(LocalSandboxManager):
             try:
                 await sandbox.stop()
             except Exception as exc:
-                logger.warning(self._conn.redact(f'E2B failed-create cleanup: {exc}'))
+                logger.warning(E2BError.from_exception('failed-create cleanup', exc, run_id=self.run_id))
             if sandbox._sbx is None:
                 del self._sandboxes[sandbox.id]
                 await self._release_capacity([sandbox.id])
@@ -150,7 +150,7 @@ class E2BSandboxManager(LocalSandboxManager):
             try:
                 await sandbox.stop()
             except Exception as exc:
-                logger.error(self._conn.redact(f'E2B sandbox {sandbox_id}: stop failed: {exc}'))
+                logger.error(E2BError.from_exception(f'stop sandbox {sandbox_id}', exc, run_id=self.run_id))
                 return False
             await self._release_capacity([sandbox_id])
             return True
@@ -199,7 +199,9 @@ class E2BSandboxManager(LocalSandboxManager):
                                 self._sandbox_pool.append(sandbox.id)
                                 created_ids.append(sandbox.id)
                         except Exception as exc:
-                            logger.error(self._conn.redact(f'E2B pool member {sandbox.id}: create failed: {exc}'))
+                            logger.error(
+                                E2BError.from_exception(f'create pool member {sandbox.id}', exc, run_id=self.run_id)
+                            )
                 finally:
                     await self._release_capacity([box.id for box in sandboxes if box.id not in self._sandboxes])
                     if created_ids:

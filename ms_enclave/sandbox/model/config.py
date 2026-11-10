@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
-from ms_enclave.sandbox.utils.e2b_helpers import BuildMode, E2BProvider, detect_provider, infer_region
+from ms_enclave.sandbox.model.constants import DEFAULT_E2B_MAX_CONCURRENT_BUILDS
+from ms_enclave.sandbox.utils.e2b_helpers import BuildMode, E2BEndpoint, E2BProvider
 
 
 class SandboxManagerConfig(BaseModel):
@@ -138,7 +139,7 @@ class E2BSandboxManagerConfig(SandboxManagerConfig):
     api_url: Optional[str] = None
     domain: Optional[str] = None
     max_sandboxes: int = Field(default=16, gt=0, description='Maximum live sandboxes and pending capacity reservations')
-    max_concurrent_builds: int = Field(default=4, gt=0)
+    max_concurrent_builds: int = Field(default=DEFAULT_E2B_MAX_CONCURRENT_BUILDS, gt=0)
     build_mode: Optional[BuildMode] = None
     image_region: Optional[str] = None
     image_mapping: Dict[str, str] = Field(default_factory=dict, repr=False)
@@ -153,26 +154,30 @@ class E2BSandboxManagerConfig(SandboxManagerConfig):
             self.api_key = SecretStr(os.environ.get('E2B_API_KEY', ''))
         if not self.api_key.get_secret_value():
             raise ValueError(
-                'E2B api_key is missing: set sandbox.manager_config.api_key or the E2B_API_KEY environment variable.'
+                'E2B api_key is missing: set E2BSandboxManagerConfig.api_key or the E2B_API_KEY environment variable.'
             )
         if self.provider != 'aliyun' and self.build_mode == 'micro':
             raise ValueError("build_mode='micro' is only supported by Aliyun Agent Sandbox.")
         return self
 
     @property
+    def _endpoint(self) -> E2BEndpoint:
+        return E2BEndpoint(self.domain, self.api_url)
+
+    @property
     def provider(self) -> E2BProvider:
         """Return the provider inferred from the endpoint."""
-        return detect_provider(self.domain, self.api_url)
+        return self._endpoint.provider
 
     @property
     def target_region(self) -> Optional[str]:
         """Return an explicit or endpoint-derived image region."""
-        return self.image_region or infer_region(self.domain, self.api_url)
+        return self.image_region or self._endpoint.region
 
     @property
     def resolved_build_mode(self) -> BuildMode:
         """Return the provider's default build mode unless overridden."""
-        return self.build_mode or ('micro' if self.provider == 'aliyun' else 'container')
+        return self.build_mode or self._endpoint.default_build_mode
 
 
 class E2BSandboxConfig(SandboxConfig):

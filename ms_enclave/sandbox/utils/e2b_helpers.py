@@ -1,45 +1,64 @@
-"""Pure image, endpoint and secret handling for E2B-compatible services."""
+"""Endpoint and image rules for E2B-compatible services."""
 
 import hashlib
 import re
-from typing import Literal, Optional
-from urllib.parse import urlparse
+from dataclasses import dataclass
+from typing import Literal, Optional, Tuple
+from urllib.parse import urlsplit
 
 E2BProvider = Literal['e2b_official', 'aliyun']
 BuildMode = Literal['micro', 'container']
-TEMPLATE_NAME_PREFIX = 'evalscope'
+TEMPLATE_NAME_PREFIX = 'ms-enclave'
 TEMPLATE_NAME_MAX_LEN = 128
-ACR_HOST_PATTERN = re.compile(r'^fc-e2b-registry\.(?P<region>[a-z0-9-]+)\.cr\.aliyuncs\.com/')
+_ALIYUN_DOMAIN_SUFFIX = '.aliyuncs.com'
+_ACR_HOST_PATTERN = re.compile(rf'^fc-e2b-registry\.(?P<region>[a-z0-9-]+)\.cr{re.escape(_ALIYUN_DOMAIN_SUFFIX)}/')
 _REGION_LABEL = re.compile(r'[a-z]{2}-[a-z]+(?:-\d+)?')
-REDACTED = '***'
 
 
-def detect_provider(domain: Optional[str], api_url: Optional[str]) -> E2BProvider:
-    """Identify Aliyun endpoints by their host suffix."""
-    hosts = (domain or '', (urlparse(api_url).hostname or '') if api_url else '')
-    return 'aliyun' if any(h.lower().endswith('.aliyuncs.com') for h in hosts) else 'e2b_official'
+@dataclass(frozen=True)
+class E2BEndpoint:
+    """Interpret connection hosts consistently for provider and region selection."""
 
+    domain: Optional[str] = None
+    api_url: Optional[str] = None
 
-def infer_region(domain: Optional[str], api_url: Optional[str]) -> Optional[str]:
-    """Find a region DNS label in a new or legacy Aliyun endpoint."""
-    for host in (domain, urlparse(api_url).hostname if api_url else None):
-        if host and host.lower().endswith('.aliyuncs.com'):
-            for label in host.lower().split('.'):
-                if _REGION_LABEL.fullmatch(label):
-                    return label
-    return None
+    @property
+    def _aliyun_hosts(self) -> Tuple[str, ...]:
+        hosts = (
+            urlsplit(value if '://' in value else f'//{value}').hostname
+            for value in (self.domain, self.api_url)
+            if value
+        )
+        return tuple(host for host in hosts if host and host.endswith(_ALIYUN_DOMAIN_SUFFIX))
+
+    @property
+    def provider(self) -> E2BProvider:
+        return 'aliyun' if self._aliyun_hosts else 'e2b_official'
+
+    @property
+    def region(self) -> Optional[str]:
+        return next(
+            (label for host in self._aliyun_hosts for label in host.split('.') if _REGION_LABEL.fullmatch(label)),
+            None,
+        )
+
+    @property
+    def default_build_mode(self) -> BuildMode:
+        return 'micro' if self.provider == 'aliyun' else 'container'
 
 
 def is_acr_image(image: str) -> bool:
     """Return whether the image uses the Agent Sandbox ACR registry."""
-    return ACR_HOST_PATTERN.match(image) is not None
+    return _ACR_HOST_PATTERN.match(image) is not None
 
 
 def rewrite_acr_region(image: str, region: Optional[str]) -> str:
     """Replace only the region segment of an ACR registry host."""
-    if not region:
+    match = _ACR_HOST_PATTERN.match(image)
+    if not region or match is None:
         return image
-    return ACR_HOST_PATTERN.sub(f'fc-e2b-registry.{region}.cr.aliyuncs.com/', image, count=1)
+    start, end = match.span('region')
+    return image[:start] + region + image[end:]
 
 
 def normalize_image_ref(ref: str) -> str:
@@ -59,8 +78,3 @@ def build_template_name(image: str, *, build_mode: BuildMode, cpu_count: int, me
     label = re.sub(r'[^a-z0-9_-]+', '-', base.lower()).strip('-') or 'image'
     budget = TEMPLATE_NAME_MAX_LEN - len(TEMPLATE_NAME_PREFIX) - len(digest) - 2
     return f'{TEMPLATE_NAME_PREFIX}-{label[:budget]}-{digest}'
-
-
-def redact(text: str, secret: Optional[str]) -> str:
-    """Mask every occurrence of a nonempty secret."""
-    return text.replace(secret, REDACTED) if secret else text

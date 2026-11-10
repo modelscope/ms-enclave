@@ -3,12 +3,14 @@
 import asyncio
 import builtins
 import io
+import logging
 import re
 import shlex
 import subprocess
 import sys
 import tarfile
 import tempfile
+import traceback
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -21,12 +23,12 @@ from e2b import CommandExitException
 from e2b.connection_config import ConnectionConfig
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from ms_enclave.sandbox.boxes import DockerSandbox, SandboxFactory
 from ms_enclave.sandbox.boxes import e2b_connection as connection_module
 from ms_enclave.sandbox.boxes import e2b_template as template_module
-from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, retry_dispatch
+from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, E2BError, retry_dispatch
 from ms_enclave.sandbox.boxes.e2b_sandbox import E2BSandbox
 from ms_enclave.sandbox.boxes.e2b_template import E2BTemplateError, E2BTemplateResolver
 from ms_enclave.sandbox.manager import E2BSandboxManager
@@ -38,7 +40,6 @@ from ms_enclave.sandbox.model import (
     SandboxStatus,
     SandboxType,
 )
-from ms_enclave.sandbox.utils.e2b_helpers import redact
 
 
 class FakeHandle:
@@ -225,10 +226,10 @@ async def test_retry_connection_failures(failures: int, monkeypatch: pytest.Monk
     call = AsyncMock(side_effect=[ConnectionError('test-secret')] * failures + ['ok'])
     if failures == 3:
         with pytest.raises(RuntimeError, match='run_id=run') as error:
-            await retry_dispatch('create', call, run_id='run', redactor=connection().redact)
+            await retry_dispatch('create', call, run_id='run')
         assert 'test-secret' not in str(error.value)
     else:
-        assert await retry_dispatch('create', call, run_id='run', redactor=connection().redact) == 'ok'
+        assert await retry_dispatch('create', call, run_id='run') == 'ok'
     assert call.call_count == min(failures + 1, 3)
 
 
@@ -236,10 +237,11 @@ async def test_retry_status_and_read_timeout(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(connection_module.asyncio, 'sleep', AsyncMock())
     response = httpx.Response(429, request=httpx.Request('GET', 'https://example.com'))
     call = AsyncMock(side_effect=[httpx.HTTPStatusError('limited', request=response.request, response=response), 'ok'])
-    assert await retry_dispatch('status', call, run_id='r', redactor=str) == 'ok'
+    assert await retry_dispatch('status', call, run_id='r') == 'ok'
     call = AsyncMock(side_effect=httpx.ReadTimeout('unknown dispatch state'))
-    with pytest.raises(RuntimeError, match='unknown dispatch state'):
-        await retry_dispatch('create', call, run_id='r', redactor=str)
+    with pytest.raises(E2BError, match='ReadTimeout') as error:
+        await retry_dispatch('create', call, run_id='r')
+    assert error.value.details.get_secret_value() == 'unknown dispatch state'
     assert call.call_count == 1
     assert 'api_url' not in connection().api_params()
     assert 'domain' not in connection().api_params()
@@ -267,11 +269,11 @@ def test_final_image(aliyun: bool, mapped: bool, prefix: bool, label: str) -> No
 def test_shared_template_resolution(count: int, initial: str | None, success: bool) -> None:
     async def run() -> None:
         resolver = E2BTemplateResolver(connection(), {}, 2)
-        remote = template_module._RemoteTemplate('id', initial) if initial else None
+        remote = template_module._RemoteTemplate(template_id='id', status=initial) if initial else None
         resolver._find = AsyncMock(return_value=remote)
         resolver._delete = AsyncMock()
         resolver._build = AsyncMock()
-        resolver._wait = AsyncMock(return_value=template_module._RemoteTemplate('id', 'ready' if success else 'error'))
+        resolver._wait = AsyncMock(return_value=template_module._RemoteTemplate(template_id='id', status='ready' if success else 'error'))
         cfg = E2BSandboxConfig(image='org/image')
         results = await asyncio.gather(*(resolver.resolve(cfg, run_id='r') for _ in range(count)), return_exceptions=True)
         failed = initial != 'ready' and not success
@@ -305,7 +307,7 @@ async def test_template_api_and_headers(sdk: SimpleNamespace) -> None:
 
 async def test_template_poll_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     resolver = E2BTemplateResolver(connection(), {}, 1)
-    resolver._find = AsyncMock(return_value=template_module._RemoteTemplate('id', 'waiting'))
+    resolver._find = AsyncMock(return_value=template_module._RemoteTemplate(template_id='id', status='waiting'))
     monkeypatch.setattr(template_module, '_POLL_TIMEOUT_S', 0)
     with pytest.raises(E2BTemplateError, match='name.*waiting'):
         await resolver._wait('name', run_id='r')
@@ -313,8 +315,8 @@ async def test_template_poll_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_template_eventual_visibility(monkeypatch: pytest.MonkeyPatch) -> None:
     resolver = E2BTemplateResolver(connection(), {}, 1)
-    ready = template_module._RemoteTemplate('id', 'ready')
-    resolver._find = AsyncMock(side_effect=[None, template_module._RemoteTemplate('id', 'building'), ready])
+    ready = template_module._RemoteTemplate(template_id='id', status='ready')
+    resolver._find = AsyncMock(side_effect=[None, template_module._RemoteTemplate(template_id='id', status='building'), ready])
     monkeypatch.setattr(template_module, '_POLL_INTERVAL_S', 0)
     assert await resolver._wait('name', run_id='r') == ready
 
@@ -334,7 +336,7 @@ async def test_build_concurrency_limit() -> None:
         nonlocal active
         await asyncio.sleep(0)
         active -= 1
-        return template_module._RemoteTemplate('id', 'ready')
+        return template_module._RemoteTemplate(template_id='id', status='ready')
 
     resolver._build, resolver._wait = build, wait
     await asyncio.gather(*(resolver.resolve(E2BSandboxConfig(image=f'org/{i}'), run_id='r') for i in range(8)))
@@ -428,7 +430,7 @@ async def test_archive_errors_and_cleanup() -> None:
     assert not await box.put_archive('/path', b'archive')
     remote = box._sbx
     remote.kill.side_effect = RuntimeError('kill failed')
-    with pytest.raises(RuntimeError, match='kill failed'):
+    with pytest.raises(E2BError, match='kill sandbox.*failed'):
         await box.stop()
     assert box.status == SandboxStatus.ERROR and box._sbx is remote
     remote.kill.side_effect = None
@@ -448,9 +450,10 @@ async def test_create_metadata_factory_and_failure(sdk: SimpleNamespace) -> None
     assert 'lifecycle' not in kwargs and 'envs' not in kwargs
     await box.stop()
     sdk.create.side_effect = RuntimeError('test-secret Timeout cannot be greater than 1 hours')
-    with pytest.raises(RuntimeError, match='template=explicit.*run_id=.*sandbox_timeout=3600') as error:
+    with pytest.raises(E2BError, match='template=explicit.*sandbox_timeout=3600.*run_id=') as error:
         await box.start()
-    assert '3600s' in str(error.value) and 'test-secret' not in str(error.value)
+    assert 'test-secret' not in str(error.value)
+    assert 'test-secret' in error.value.details.get_secret_value()
 
 
 # Feature: e2b-sandbox, Property 10: Live sandbox limits and slots survive create failures and repeated deletion.
@@ -496,10 +499,11 @@ def test_manager_slots(limit: int, outcomes: list[bool]) -> None:
 # Feature: e2b-sandbox, Property 11: SDK failure diagnostics and cached errors never expose the API key.
 @settings(max_examples=100)
 @given(st.text(alphabet='abcdef0123456789', min_size=12, max_size=24))
-def test_secret_redaction(secret: str) -> None:
+def test_sdk_error_details_are_secret(secret: str) -> None:
     async def run() -> None:
         conn = E2BConnection.from_config(E2BSandboxManagerConfig(api_key=secret))
-        assert secret not in redact(f'{secret} twice {secret}', secret)
+        assert secret not in repr(conn)
+        assert secret not in E2BSandboxManagerConfig(api_key=secret).model_dump_json()
         resolver = E2BTemplateResolver(conn, {}, 1)
         resolver._find = AsyncMock(side_effect=RuntimeError(secret))
         with pytest.raises(E2BTemplateError) as error:
@@ -511,9 +515,77 @@ def test_secret_redaction(secret: str) -> None:
         assert secret not in (await box.execute_command('cmd')).stderr
         call = AsyncMock(side_effect=RuntimeError(secret))
         with pytest.raises(RuntimeError) as error:
-            await retry_dispatch('create', call, run_id='r', redactor=conn.redact)
+            await retry_dispatch('create', call, run_id='r')
         assert secret not in str(error.value)
+        assert isinstance(error.value.details, SecretStr)
+        assert secret not in repr(vars(error.value))
+        assert error.value.details.get_secret_value() == secret
+        assert secret not in ''.join(traceback.format_exception(error.value))
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('sdk_error', [False, True])
+async def test_sdk_response_is_private_in_errors_and_retry_logs(
+    sdk_error: bool, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from e2b import RateLimitException
+
+    secret = 'private-key-for-test-only'
+    message = f'api_key={secret}; encoded=private%2Dkey%2Dfor%2Dtest%2Donly'
+    response = httpx.Response(429, request=httpx.Request('POST', 'https://example.com?api_key=' + secret))
+    cause = (
+        RateLimitException(message)
+        if sdk_error
+        else httpx.HTTPStatusError(message, request=response.request, response=response)
+    )
+    monkeypatch.setattr(connection_module.asyncio, 'sleep', AsyncMock())
+    logger = connection_module.logger
+    logger.addHandler(caplog.handler)
+    try:
+        with pytest.raises(E2BError) as raised:
+            await retry_dispatch('create', AsyncMock(side_effect=cause), run_id='test-run')
+    finally:
+        logger.removeHandler(caplog.handler)
+    error = raised.value
+    assert error.status_code == 429 and 'HTTP 429' in str(error)
+    assert type(cause).__name__ in str(error) and 'test-run' in str(error)
+    assert error.details.get_secret_value() == message
+    public = '\n'.join([
+        str(error), repr(error), repr(vars(error)),
+        ''.join(traceback.format_exception(error)), caplog.text,
+    ])
+    assert secret not in public and 'private%2Dkey' not in public
+    assert len(caplog.records) == 2
+    outer = E2BError.from_exception('create sandbox', error, run_id='test-run')
+    assert outer.status_code == 429 and outer.details is error.details
+
+
+async def test_upload_failure_log_keeps_sdk_response_private(caplog: pytest.LogCaptureFixture) -> None:
+    box = running_sandbox()
+    box._sbx.files.write.side_effect = RuntimeError('test-secret upload rejected')
+    logger = connection_module.logger
+    logger.addHandler(caplog.handler)
+    try:
+        assert not await box.put_archive('/home/user', b'archive')
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert 'test-secret' not in caplog.text
+    assert 'upload to /home/user' in caplog.text and 'RuntimeError' in caplog.text
+
+
+async def test_unexpected_template_response_does_not_expose_details(sdk: SimpleNamespace) -> None:
+    secret = 'unexpected-response-with-test-secret'
+
+    async def build(image, name, **kwargs):
+        sdk.api.rows = [{'templateID': 'id', 'aliases': [name], 'buildStatus': secret}]
+
+    sdk.build.side_effect = build
+    resolver = E2BTemplateResolver(connection(), {}, 1)
+    with pytest.raises(E2BTemplateError, match='ValidationError') as error:
+        await resolver.resolve(E2BSandboxConfig(image='org/image'), run_id='r')
+    assert secret not in str(error.value) and secret not in str(resolver._failed)
+    assert isinstance(error.value.details, SecretStr)
+    assert secret not in error.value.details.get_secret_value()
 
 
 async def test_manager_cleanup_and_invalid_type(sdk: SimpleNamespace) -> None:
@@ -658,7 +730,7 @@ async def test_manager_retries_failed_delete_and_shutdown(sdk: SimpleNamespace) 
     await manager.start()
     sid = await manager.create_sandbox(SandboxType.E2B, {'template': 'explicit'})
     sdk.remote.kill.side_effect = RuntimeError('kill rejected')
-    with pytest.raises(RuntimeError, match='kill rejected'):
+    with pytest.raises(E2BError, match='kill sandbox.*failed'):
         await manager.delete_sandbox(sid)
     assert sid in manager._sandboxes and manager._reservations == {sid}
     with pytest.raises(RuntimeError, match='cleanup incomplete'):

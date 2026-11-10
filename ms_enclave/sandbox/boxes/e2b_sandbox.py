@@ -8,7 +8,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Union
 
 from ms_enclave.sandbox.boxes.base import Sandbox, register_sandbox
-from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, require_e2b, retry_dispatch
+from ms_enclave.sandbox.boxes.e2b_connection import E2BConnection, E2BError, require_e2b, retry_dispatch
 from ms_enclave.sandbox.boxes.e2b_template import E2BTemplateResolver
 from ms_enclave.sandbox.model import (
     CommandResult,
@@ -18,6 +18,7 @@ from ms_enclave.sandbox.model import (
     SandboxStatus,
     SandboxType,
 )
+from ms_enclave.sandbox.model.constants import DEFAULT_E2B_MAX_CONCURRENT_BUILDS
 from ms_enclave.utils import get_logger
 
 logger = get_logger()
@@ -60,7 +61,7 @@ class E2BSandbox(Sandbox):
                 try:
                     await self._stop()
                 except Exception as exc:
-                    logger.warning(self._conn.redact(f'E2B startup cleanup failed: {exc}'))
+                    logger.warning(E2BError.from_exception('startup cleanup', exc, run_id=self._run_id))
                 self.update_status(SandboxStatus.ERROR)
                 raise
 
@@ -75,7 +76,7 @@ class E2BSandbox(Sandbox):
             cfg = E2BSandboxManagerConfig()
             self._conn = E2BConnection.from_config(cfg)
         if self._templates is None:
-            self._templates = E2BTemplateResolver(self._conn, {}, 4)
+            self._templates = E2BTemplateResolver(self._conn, {}, DEFAULT_E2B_MAX_CONCURRENT_BUILDS)
         self.update_status(SandboxStatus.INITIALIZING)
         self._started = time.monotonic()
         template = self.config.template or self.config.image
@@ -92,7 +93,6 @@ class E2BSandbox(Sandbox):
                         **self._conn.api_params(retries=0),
                     ),
                     run_id=self._run_id,
-                    redactor=self._conn.redact,
                 )
             )
             try:
@@ -102,20 +102,15 @@ class E2BSandbox(Sandbox):
                 try:
                     self._sbx = await creation
                 except Exception as exc:
-                    logger.warning(self._conn.redact(f'E2B create interrupted run_id={self._run_id}: {exc}'))
+                    logger.warning(E2BError.from_exception('interrupted create', exc, run_id=self._run_id))
                 raise
         except Exception as exc:
             self.update_status(SandboxStatus.ERROR)
-            message = (
-                f'Failed to create E2B sandbox (template={template}, run_id={self._run_id}, '
-                f'sandbox_timeout={self.config.sandbox_timeout}): {exc}'
-            )
-            if 'cannot be greater than' in str(exc):
-                message += (
-                    '; sandbox_timeout may exceed the plan limit (e2b official Hobby: 3600s); '
-                    'lower E2BSandboxConfig.sandbox_timeout or upgrade the plan.'
-                )
-            raise RuntimeError(self._conn.redact(message)) from None
+            raise E2BError.from_exception(
+                f'create sandbox (template={template}, sandbox_timeout={self.config.sandbox_timeout})',
+                exc,
+                run_id=self._run_id,
+            ) from None
         self.metadata.update(remote_id=self._sbx.sandbox_id, template=template, run_id=self._run_id)
         await self.initialize_tools()
         self.update_status(SandboxStatus.RUNNING)
@@ -136,9 +131,7 @@ class E2BSandbox(Sandbox):
                 await remote.kill(**self._conn.api_params(retries=0))
             except Exception as exc:
                 self.update_status(SandboxStatus.ERROR)
-                raise RuntimeError(
-                    self._conn.redact(f'E2B sandbox {self.id} remote={remote.sandbox_id}: kill failed: {exc}')
-                ) from None
+                raise E2BError.from_exception(f'kill sandbox {self.id}', exc, run_id=self._run_id) from None
             self._sbx = None
             logger.info(
                 f'E2B sandbox {self.id} stopped run_id={self._run_id} lifetime={time.monotonic() - self._started:.1f}s'
@@ -215,7 +208,8 @@ class E2BSandbox(Sandbox):
         except Exception as exc:
             # Dispatch/read failures can leave a process running with no completion witness.
             await self._kill_command(handle)
-            return self._result(command, ExecutionStatus.ERROR, -1, '', self._conn.redact(str(exc)), started)
+            error = E2BError.from_exception('execute command', exc, run_id=self._run_id)
+            return self._result(command, ExecutionStatus.ERROR, -1, '', str(error), started)
 
     async def _kill_command(self, handle: Any) -> None:
         if handle is None:
@@ -225,7 +219,7 @@ class E2BSandbox(Sandbox):
             await handle.kill()
         except Exception as exc:
             self.update_status(SandboxStatus.ERROR)
-            logger.warning(self._conn.redact(f'E2B sandbox {self.id}: process kill failed: {exc}'))
+            logger.warning(E2BError.from_exception(f'kill process in sandbox {self.id}', exc, run_id=self._run_id))
 
     async def put_archive(self, target_dir: str, data: bytes) -> bool:
         """Upload a tar archive, extract as the configured user, and remove it."""
@@ -237,7 +231,7 @@ class E2BSandbox(Sandbox):
         try:
             await self._sbx.files.write(tmp, data, user=self.config.user)
         except Exception as exc:
-            logger.error(self._conn.redact(f'E2B sandbox {self.id}: upload to {target_dir} failed: {exc}'))
+            logger.error(E2BError.from_exception(f'upload to {target_dir}', exc, run_id=self._run_id))
             return False
         q = shlex.quote
         result = await self.execute_command(
@@ -245,8 +239,6 @@ class E2BSandbox(Sandbox):
             timeout=300,
         )
         if result.exit_code != 0:
-            logger.error(
-                self._conn.redact(f'E2B sandbox {self.id}: extracting into {target_dir} failed: {result.stderr}')
-            )
+            logger.error(f'E2B sandbox {self.id}: extracting into {target_dir} failed, exit_code={result.exit_code}')
             return False
         return True
