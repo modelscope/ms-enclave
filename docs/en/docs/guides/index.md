@@ -1,6 +1,6 @@
 # Usage Guides Overview
 
-`ms-enclave` exposes four typical entry points for different integration needs. This section is organized by **what you want to do** — pick an entry point from the table below, then jump to the matching guide.
+`ms-enclave` exposes several entry points for different integration needs. This section is organized by **what you want to do** — pick an entry point from the table below, then jump to the matching guide.
 
 ## Which entry should I use?
 
@@ -10,6 +10,7 @@
 | Manage many sandboxes in one app, with background cleanup | `LocalSandboxManager` | [Local manager](local-manager.md) |
 | High-concurrency service, need warm-up & pooling | `Sandbox Pool` | [Sandbox pool](sandbox-pool.md) |
 | Sandbox runs on a separate server | `HttpSandboxManager` | [HTTP client](../deployment/http-client.md) |
+| E2B-compatible cloud service without local Docker | `E2BSandboxManager` | [E2B remote sandbox](../deployment/e2b.md) |
 | Let the LLM choose which tool to call | `Manager` + OpenAI Tools | [LLM Agent integration](agent-integration.md) |
 
 Rule of thumb:
@@ -24,6 +25,8 @@ To avoid hard-coding "local vs. remote" in business code, use `SandboxManagerFac
 
 - pass `base_url` → returns `HttpSandboxManager`
 - omit `base_url` → returns `LocalSandboxManager`
+
+For E2B, explicitly pass `manager_type=SandboxManagerType.E2B` and an `E2BSandboxManagerConfig`; E2B endpoints are not auto-detected by the factory.
 
 ```python
 from ms_enclave.sandbox.manager import SandboxManagerFactory

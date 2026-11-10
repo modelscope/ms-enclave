@@ -56,7 +56,9 @@ class VolcengineSandbox(StatelessSandbox):
         _verify_ssl = verify_ssl if verify_ssl is not None else config.verify_ssl
         _extra_headers = extra_headers if extra_headers is not None else config.extra_headers
         _api_key = api_key if api_key is not None else config.api_key
-        _dataset_language_map = dataset_language_map if dataset_language_map is not None else config.dataset_language_map
+        _dataset_language_map = (
+            dataset_language_map if dataset_language_map is not None else config.dataset_language_map
+        )
 
         super().__init__(
             config,
@@ -101,9 +103,7 @@ class VolcengineSandbox(StatelessSandbox):
         Applies ``dataset_language_map`` to translate language identifiers
         before sending, so e.g. ``r`` can be sent upstream as ``R``.
         """
-        mapped_language = (
-            self._dataset_language_map.get(language, language) if self._dataset_language_map else language
-        )
+        mapped_language = self._dataset_language_map.get(language, language) if self._dataset_language_map else language
         payload = {'code': code, 'language': mapped_language}
         return await self._post_json(self._run_code_path, payload, timeout=timeout)
 

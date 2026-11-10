@@ -178,6 +178,48 @@ class TestPoolExecution(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.manager._sandbox_pool), 1)
         self.assertEqual(self.manager._sandbox_pool[0], sandbox_ids[0])
 
+    async def test_manager_waits_for_cancelled_execution_recovery(self):
+        config = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'shell_executor': {}}
+        )
+        sandbox_id = await self.manager.create_sandbox(SandboxType.DOCKER, config)
+        marker = '/tmp/ms-enclave-manager-cancel-marker'
+        await self.manager.execute_tool(
+            sandbox_id, 'shell_executor', {'command': ['bash', '-c', f'rm -f {marker}'], 'timeout': 5}
+        )
+
+        first = asyncio.create_task(
+            self.manager.execute_tool(
+                sandbox_id,
+                'shell_executor',
+                {'command': ['bash', '-c', f'(sleep 2; touch {marker}) &'], 'timeout': 30},
+            )
+        )
+        await asyncio.sleep(0.2)
+        second = asyncio.create_task(
+            self.manager.execute_tool(
+                sandbox_id, 'shell_executor', {'command': ['echo', 'after-recovery'], 'timeout': 5}
+            )
+        )
+        await asyncio.sleep(0.1)
+        self.assertFalse(second.done())
+
+        first.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await first
+
+        result = await asyncio.wait_for(second, timeout=20)
+        self.assertTrue(result.success)
+        self.assertIn('after-recovery', result.output)
+        await asyncio.sleep(2.5)
+        check = await self.manager.execute_tool(
+            sandbox_id,
+            'shell_executor',
+            {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT'], 'timeout': 5},
+        )
+        self.assertEqual(check.output.strip(), 'ABSENT')
+
 
 class TestConcurrentPoolExecution(unittest.IsolatedAsyncioTestCase):
     """Test concurrent execution with pool."""

@@ -18,10 +18,12 @@ class SandboxStatus(str, Enum):
 
 class SandboxType(str, Enum):
     """Sandbox type enumeration."""
+
     DOCKER = 'docker'
     DOCKER_NOTEBOOK = 'docker_notebook'
     VOLCENGINE = 'volcengine'
     DUMMY = 'dummy'
+    E2B = 'e2b'
 
     @classmethod
     def get_compatible_types(cls, sandbox_type: 'SandboxType') -> Set['SandboxType']:
@@ -66,13 +68,16 @@ class SandboxType(str, Enum):
 
 class SandboxManagerType(str, Enum):
     """Sandbox manager type enumeration."""
+
     LOCAL = 'local'
+    E2B = 'e2b'
     HTTP = 'http'
     VOLCENGINE = 'volcengine'
 
 
 class ToolType(str, Enum):
     """Tool type enumeration."""
+
     SANDBOX = 'sandbox'
     FUNCTION = 'function'
     EXTERNAL = 'external'

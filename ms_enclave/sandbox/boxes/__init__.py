@@ -3,6 +3,7 @@
 from .base import Sandbox, SandboxFactory, register_sandbox
 from .docker_notebook import DockerNotebookSandbox
 from .docker_sandbox import DockerSandbox
+from .e2b_sandbox import E2BSandbox
 from .stateless_sandbox import StatelessSandbox
 from .volcengine import VolcengineSandbox
 
@@ -12,9 +13,9 @@ __all__ = [
     'SandboxFactory',
     'register_sandbox',
     'StatelessSandbox',
-
     # Implementations
     'DockerSandbox',
+    'E2BSandbox',
     'DockerNotebookSandbox',
     'VolcengineSandbox',
 ]

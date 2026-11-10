@@ -25,7 +25,7 @@ class TestToolFactory(unittest.TestCase):
         self.assertEqual(tool.name, 'python_executor')
         self.assertIsNotNone(tool.description)
         self.assertIsNotNone(tool.schema)
-        self.assertEqual(tool.required_sandbox_types, [SandboxType.DOCKER, SandboxType.VOLCENGINE])
+        self.assertEqual(tool.required_sandbox_types, [SandboxType.DOCKER, SandboxType.VOLCENGINE, SandboxType.E2B])
 
     def test_create_unknown_tool_raises_error(self):
         """Test that creating unknown tool raises appropriate error."""
@@ -149,6 +149,30 @@ class TestExecutorTool(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result.status, ExecutionStatus.TIMEOUT)
+        await asyncio.sleep(2.5)
+        check = await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT']}
+        )
+        self.assertEqual(check.output.strip(), 'ABSENT')
+
+    async def test_shell_executor_cancellation_restarts_sandbox(self):
+        self.docker_sandbox.add_tool(
+            ToolFactory.create_tool('shell_executor')
+        )
+        marker = '/tmp/ms-enclave-shell-cancel-marker'
+        await self.docker_sandbox.execute_tool(
+            'shell_executor', {'command': ['bash', '-c', f'rm -f {marker}'], 'timeout': 5}
+        )
+        task = asyncio.create_task(
+            self.docker_sandbox.execute_tool(
+                'shell_executor', {'command': ['bash', '-c', f'(sleep 2; touch {marker}) &'], 'timeout': 30}
+            )
+        )
+        await asyncio.sleep(0.2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
         await asyncio.sleep(2.5)
         check = await self.docker_sandbox.execute_tool(
             'shell_executor', {'command': ['bash', '-c', f'test -e {marker} && echo PRESENT || echo ABSENT']}
@@ -290,6 +314,26 @@ print(c)"""
         )
         self.assertEqual(check.status, ExecutionStatus.SUCCESS)
         self.assertIn('ABSENT', check.output)
+
+    async def test_shell_cancellation_recreates_notebook_session(self):
+        self.docker_sandbox.add_tool(ToolFactory.create_tool('shell_executor'))
+        self.docker_sandbox.add_tool(ToolFactory.create_tool('notebook_executor'))
+
+        task = asyncio.create_task(
+            self.docker_sandbox.execute_tool(
+                'shell_executor', {'command': ['bash', '-c', '(sleep 2) &'], 'timeout': 30}
+            )
+        )
+        await asyncio.sleep(0.2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        result = await self.docker_sandbox.execute_tool(
+            'notebook_executor', {'code': "print('notebook recovered')"}
+        )
+        self.assertEqual(result.status, ExecutionStatus.SUCCESS)
+        self.assertIn('notebook recovered', result.output)
 
 if __name__ == '__main__':
     import asyncio

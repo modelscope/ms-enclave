@@ -28,33 +28,22 @@ class MultiCodeExecutor(SandboxTool):
         type='object',
         properties={
             'language': {
-                'type':
-                'string',
-                'description':
-                'Language to execute (python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket)'  # noqa: E501
-            },
-            'code': {
                 'type': 'string',
-                'description': 'Source code to execute'
+                'description': 'Language to execute (python, cpp, csharp, go, java, nodejs, ts, rust, php, bash, pytest, jest, go_test, lua, r, perl, d_ut, ruby, scala, julia, kotlin_script, verilog, lean, swift, racket)',  # noqa: E501
             },
+            'code': {'type': 'string', 'description': 'Source code to execute'},
             'files': {
                 'type': 'object',
-                'additionalProperties': {
-                    'type': 'string'
-                },
-                'description': 'Optional additional files to write before execution (filename -> content)'
+                'additionalProperties': {'type': 'string'},
+                'description': 'Optional additional files to write before execution (filename -> content)',
             },
             'compile_timeout': {
                 'type': 'integer',
-                'description': 'Compile timeout in seconds (omit to disable compilation timeout)'
+                'description': 'Compile timeout in seconds (omit to disable compilation timeout)',
             },
-            'run_timeout': {
-                'type': 'integer',
-                'description': 'Run timeout in seconds',
-                'default': 30
-            }
+            'run_timeout': {'type': 'integer', 'description': 'Run timeout in seconds', 'default': 30},
         },
-        required=['language', 'code']
+        required=['language', 'code'],
     )
 
     # cache for optional C++ runtime flags detected in the running container
@@ -104,7 +93,7 @@ class MultiCodeExecutor(SandboxTool):
         code: str,
         files: Optional[Dict[str, str]] = None,
         compile_timeout: Optional[int] = None,
-        run_timeout: Optional[int] = 30
+        run_timeout: Optional[int] = 30,
     ) -> ToolResult:
         """Execute code by preparing a per-run workdir under /tmp and issuing build/run commands."""
         if not language or not code.strip():
@@ -151,7 +140,7 @@ class MultiCodeExecutor(SandboxTool):
                     tool_name=self.name,
                     status=ExecutionStatus.ERROR,
                     output='',
-                    error=f'Unsupported language: {language}'
+                    error=f'Unsupported language: {language}',
                 )
             main_path = os.path.join(workdir, main_filename)
             await sandbox_context.put_file(main_path, code)
@@ -187,20 +176,22 @@ class MultiCodeExecutor(SandboxTool):
                         tool_name=self.name,
                         status=ExecutionStatus.ERROR,
                         output=build_res.stdout,
-                        error=build_res.stderr or 'Compilation failed'
+                        error=build_res.stderr or 'Compilation failed',
                     )
                 compile_output = build_res.stdout
 
             # Run phase
             run_res = await self._exec_in_dir(sandbox_context, workdir, run_cmd, timeout=run_timeout or 30)
-            status = ExecutionStatus.TIMEOUT if run_res.status == ExecutionStatus.TIMEOUT else (
-                ExecutionStatus.SUCCESS if run_res.exit_code == 0 else ExecutionStatus.ERROR
+            status = (
+                ExecutionStatus.TIMEOUT
+                if run_res.status == ExecutionStatus.TIMEOUT
+                else (ExecutionStatus.SUCCESS if run_res.exit_code == 0 else ExecutionStatus.ERROR)
             )
             return ToolResult(
                 tool_name=self.name,
                 status=status,
                 output='\n'.join([s for s in [compile_output, run_res.stdout] if s]),
-                error=run_res.stderr if run_res.stderr else None
+                error=run_res.stderr if run_res.stderr else None,
             )
         except Exception as e:
             return ToolResult(
@@ -255,8 +246,9 @@ class MultiCodeExecutor(SandboxTool):
             return ''
         return f'export PATH="{new_path}";'
 
-    async def _get_cpp_rt_flags(self, sandbox_context: 'DockerSandbox', workdir: str,
-                                timeout: Optional[int]) -> List[str]:
+    async def _get_cpp_rt_flags(
+        self, sandbox_context: 'DockerSandbox', workdir: str, timeout: Optional[int]
+    ) -> List[str]:
         """Detect available optional gcc link flags by compiling a tiny program."""
         optional_flags = ['-lcrypto', '-lssl', '-lpthread']
         # Write a tiny C++ file
@@ -296,7 +288,7 @@ class MultiCodeExecutor(SandboxTool):
                 tool_name=self.name,
                 status=ExecutionStatus.ERROR,
                 output=init_res.stdout,
-                error=init_res.stderr or 'dotnet project initialization failed'
+                error=init_res.stderr or 'dotnet project initialization failed',
             )
         return None
 
@@ -305,8 +297,9 @@ class MultiCodeExecutor(SandboxTool):
         flags = ' ' + ' '.join(MultiCodeExecutor._cpp_rt_flags_cache) if MultiCodeExecutor._cpp_rt_flags_cache else ''
         return f'g++ -std=c++17 {main_filename} -o app{flags}', './app'
 
-    def _scala_commands(self, main_filename: str, code: Optional[str],
-                        scala_classname: Optional[str]) -> Tuple[Optional[str], str]:
+    def _scala_commands(
+        self, main_filename: str, code: Optional[str], scala_classname: Optional[str]
+    ) -> Tuple[Optional[str], str]:
         """Build and run commands for Scala, ensuring an entrypoint object exists."""
         cls = scala_classname or (self._find_scala_classname(code or '') if code else None)
         if not cls:
@@ -314,68 +307,48 @@ class MultiCodeExecutor(SandboxTool):
             return None, '/bin/sh -lc "echo Object name not found.; exit 1"'
         return f'scalac {main_filename}', f'scala {cls}'
 
-    def _build_commands(self, lang: str, main_filename: str, code: Optional[str],
-                        scala_classname: Optional[str]) -> Tuple[Optional[str], str]:
+    def _build_commands(
+        self, lang: str, main_filename: str, code: Optional[str], scala_classname: Optional[str]
+    ) -> Tuple[Optional[str], str]:
         """Mapping-based command builder for clarity and extensibility."""
         builders = {
-            'python':
-            lambda: (None, f'python {main_filename}'),
-            'pytest':
-            lambda: (None, f'pytest {main_filename}'),
-            'cpp':
-            lambda: self._cpp_commands(main_filename),
-            'csharp':
-            lambda: (None, 'dotnet run --project .'),
-            'go':
-            lambda: (f'go build -o app {main_filename}', './app'),
-            'go_test':
-            lambda: (None, f'go mod init {main_filename} && go test {main_filename}'),
-            'java':
-            lambda:
-            (f'javac -cp "{self.JAVA_RUNTIME_CP}" {main_filename}', f'java -ea -cp "{self.JAVA_RUNTIME_CP}" Main'),
-            'junit':
-            lambda: (f'javac -cp "{self.JAVA_RUNTIME_CP}" *.java', f'java -ea -cp "{self.JAVA_RUNTIME_CP}" Main'),
-            'nodejs':
-            lambda: (None, f'node {main_filename}'),
-            'js':
-            lambda: (None, f'node {main_filename}'),
-            'ts':
-            lambda: (None, f'tsx {main_filename}'),
-            'typescript':
-            lambda: (None, f'tsx {main_filename}'),
-            'rust':
-            lambda: (f'rustc {main_filename} -o app', './app'),
-            'php':
-            lambda: (None, f'php -f {main_filename}'),
-            'bash':
-            lambda: (None, f'/bin/bash {main_filename}'),
-            'jest':
-            lambda: (None, 'npm run test'),
-            'lua':
-            lambda: (None, f'lua {main_filename}'),
-            'r':
-            lambda: (None, f'Rscript {main_filename}'),
-            'perl':
-            lambda: (None, f'perl {main_filename}'),
-            'd_ut':
-            lambda: (f'dmd {main_filename} -unittest -of=test', './test'),
-            'ruby':
-            lambda: (None, f'ruby {main_filename}'),
-            'scala':
-            lambda: self._scala_commands(main_filename, code, scala_classname),
-            'julia':
-            lambda: (None, f'julia {main_filename}'),
-            'kotlin_script':
-            lambda: (None, f'kotlin {main_filename}'),
-            'verilog':
-            lambda:
-            (f'iverilog -Wall -Winfloop -Wno-timescale -g2012 -s tb -o test.vvp {main_filename}', 'vvp -n test.vvp'),
-            'lean':
-            lambda: (None, 'lake build || lean --run Main.lean'),
-            'swift':
-            lambda: (f'swiftc {main_filename} -o app', './app'),
-            'racket':
-            lambda: (None, f'racket {main_filename}'),
+            'python': lambda: (None, f'python {main_filename}'),
+            'pytest': lambda: (None, f'pytest {main_filename}'),
+            'cpp': lambda: self._cpp_commands(main_filename),
+            'csharp': lambda: (None, 'dotnet run --project .'),
+            'go': lambda: (f'go build -o app {main_filename}', './app'),
+            'go_test': lambda: (None, f'go mod init {main_filename} && go test {main_filename}'),
+            'java': lambda: (
+                f'javac -cp "{self.JAVA_RUNTIME_CP}" {main_filename}',
+                f'java -ea -cp "{self.JAVA_RUNTIME_CP}" Main',
+            ),
+            'junit': lambda: (
+                f'javac -cp "{self.JAVA_RUNTIME_CP}" *.java',
+                f'java -ea -cp "{self.JAVA_RUNTIME_CP}" Main',
+            ),
+            'nodejs': lambda: (None, f'node {main_filename}'),
+            'js': lambda: (None, f'node {main_filename}'),
+            'ts': lambda: (None, f'tsx {main_filename}'),
+            'typescript': lambda: (None, f'tsx {main_filename}'),
+            'rust': lambda: (f'rustc {main_filename} -o app', './app'),
+            'php': lambda: (None, f'php -f {main_filename}'),
+            'bash': lambda: (None, f'/bin/bash {main_filename}'),
+            'jest': lambda: (None, 'npm run test'),
+            'lua': lambda: (None, f'lua {main_filename}'),
+            'r': lambda: (None, f'Rscript {main_filename}'),
+            'perl': lambda: (None, f'perl {main_filename}'),
+            'd_ut': lambda: (f'dmd {main_filename} -unittest -of=test', './test'),
+            'ruby': lambda: (None, f'ruby {main_filename}'),
+            'scala': lambda: self._scala_commands(main_filename, code, scala_classname),
+            'julia': lambda: (None, f'julia {main_filename}'),
+            'kotlin_script': lambda: (None, f'kotlin {main_filename}'),
+            'verilog': lambda: (
+                f'iverilog -Wall -Winfloop -Wno-timescale -g2012 -s tb -o test.vvp {main_filename}',
+                'vvp -n test.vvp',
+            ),
+            'lean': lambda: (None, 'lake build || lean --run Main.lean'),
+            'swift': lambda: (f'swiftc {main_filename} -o app', './app'),
+            'racket': lambda: (None, f'racket {main_filename}'),
         }
         builder = builders.get(lang)
         if builder is None:
@@ -383,11 +356,7 @@ class MultiCodeExecutor(SandboxTool):
         return builder()
 
     def _commands_for_language(
-        self,
-        language: str,
-        main_filename: str,
-        code: Optional[str] = None,
-        scala_classname: Optional[str] = None
+        self, language: str, main_filename: str, code: Optional[str] = None, scala_classname: Optional[str] = None
     ) -> Tuple[Optional[str], str]:
         """Return (build_cmd, run_cmd) for the given language, executed with cwd=workdir."""
         lang = language.lower().strip()

@@ -1,6 +1,6 @@
 # 使用指南概览
 
-`ms-enclave` 提供四种典型的入口方式，对应不同的集成需求。本节按"做什么"组织文档，先用下面的决策表选好入口，再翻到对应章节查代码示例。
+`ms-enclave` 提供多种入口方式，对应不同的集成需求。本节按"做什么"组织文档，先用下面的决策表选好入口，再翻到对应章节查代码示例。
 
 ## 我该用哪个入口？
 
@@ -10,6 +10,7 @@
 | 应用内同时管理多个沙箱、需要后台清理 | `LocalSandboxManager` | [本地管理器](local-manager.md) |
 | 高并发服务，需要预热和池化 | `Sandbox Pool` | [沙箱池](sandbox-pool.md) |
 | 沙箱跑在独立服务器上 | `HttpSandboxManager` | [HTTP 客户端](../deployment/http-client.md) |
+| 使用兼容 E2B 的云服务，无本机 Docker | `E2BSandboxManager` | [E2B 远程沙箱](../deployment/e2b.md) |
 | 让 LLM 自主决定调用哪个工具 | `Manager` + OpenAI Tools | [接入 LLM Agent](agent-integration.md) |
 
 不确定选哪种？记住一个粗略经验：
@@ -24,6 +25,8 @@
 
 - 传入 `base_url` → 自动返回 `HttpSandboxManager`
 - 不传 `base_url` → 返回 `LocalSandboxManager`
+
+使用 E2B 时，需显式传入 `manager_type=SandboxManagerType.E2B` 和 `E2BSandboxManagerConfig`，工厂不会自动识别 E2B 端点。
 
 ```python
 from ms_enclave.sandbox.manager import SandboxManagerFactory

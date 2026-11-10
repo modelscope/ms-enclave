@@ -38,6 +38,7 @@ class LocalSandboxManager(SandboxManager):
         self._cleanup_interval = self.config.cleanup_interval or kwargs.get('cleanup_interval', 300)
         self._cleanup_task: Optional[asyncio.Task] = None
         self._pool_condition: Optional[asyncio.Condition] = None
+        self._sandbox_locks: Dict[str, asyncio.Lock] = {}
 
     async def start(self) -> None:
         """Start the sandbox manager."""
@@ -87,7 +88,7 @@ class LocalSandboxManager(SandboxManager):
         self,
         sandbox_type: SandboxType,
         config: Optional[Union[SandboxConfig, Dict]] = None,
-        sandbox_id: Optional[str] = None
+        sandbox_id: Optional[str] = None,
     ) -> str:
         """Create a new sandbox.
 
@@ -231,9 +232,10 @@ class LocalSandboxManager(SandboxManager):
         Raises:
             ValueError: If sandbox or tool not found
         """
-        sandbox = self._get_running_sandbox(sandbox_id)
-        result = await sandbox.execute_tool(tool_name, parameters)
-        return result
+        lock = self._sandbox_locks.setdefault(sandbox_id, asyncio.Lock())
+        async with lock:
+            sandbox = self._get_running_sandbox(sandbox_id)
+            return await sandbox.execute_tool(tool_name, parameters)
 
     async def get_sandbox_tools(self, sandbox_id: str) -> Dict[str, Any]:
         """Get available tools for a sandbox.
@@ -343,7 +345,7 @@ class LocalSandboxManager(SandboxManager):
         self,
         pool_size: Optional[int] = None,
         sandbox_type: Optional[SandboxType] = None,
-        config: Optional[Union[SandboxConfig, Dict]] = None
+        config: Optional[Union[SandboxConfig, Dict]] = None,
     ) -> List[str]:
         """Initialize sandbox pool.
 
@@ -458,16 +460,14 @@ class LocalSandboxManager(SandboxManager):
                     raise TimeoutError(f'Timeout waiting for available sandbox from pool after {timeout}s')
 
         # Execute tool outside of condition lock
+        sandbox = self._sandboxes[sandbox_id]
         try:
-            sandbox = self._sandboxes[sandbox_id]
-            result = await sandbox.execute_tool(tool_name, parameters)
-            return result
+            return await self.execute_tool(sandbox_id, tool_name, parameters)
         finally:
-            # Return to pool and notify waiting tasks
             async with self._pool_condition:
-                sandbox.status = SandboxStatus.IDLE
-                sandbox.updated_at = datetime.now()
-                self._sandbox_pool.append(sandbox_id)
-                logger.debug(f'Returned sandbox {sandbox_id} to pool')
-                # Notify one waiting task that a sandbox is available
+                if sandbox.status != SandboxStatus.ERROR:
+                    sandbox.status = SandboxStatus.IDLE
+                    sandbox.updated_at = datetime.now()
+                    self._sandbox_pool.append(sandbox_id)
+                    logger.debug(f'Returned sandbox {sandbox_id} to pool')
                 self._pool_condition.notify(1)

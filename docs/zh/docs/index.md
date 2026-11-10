@@ -14,9 +14,10 @@
 
 ## 系统要求
 
-- Python ≥ 3.10
-- 操作系统：Linux / macOS / Windows（需 Docker）
-- 本机 Docker 守护进程；使用 Notebook 沙箱时需开放 8888 端口
+- Python ≥ 3.11
+- 操作系统：Linux / macOS / Windows
+- Docker 后端需本机 Docker 守护进程；使用 Notebook 沙箱时需开放 8888 端口
+- [E2B 后端](deployment/e2b.md)需兼容 E2B 的服务及 API Key，无需本机 Docker
 
 ## 文档导航
 

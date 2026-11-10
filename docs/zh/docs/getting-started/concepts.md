@@ -66,6 +66,11 @@ ms-enclave 采用模块化分层架构，将运行时环境管理、工具执行
 *   **DockerNotebook (类型: `docker_notebook`)**:
     *   继承自 DockerSandbox，内置 Jupyter Kernel Gateway。支持通过 HTTP/WebSocket 进行交互式代码执行（保持变量状态）。
     *   **主要配置**: 继承自 `DockerSandboxConfig`，额外包含内核通信端口配置。
+*   **E2BSandbox (类型: `e2b`)**:
+    *   在兼容 E2B 的远端服务中保留命令和文件状态，无需本机 Docker。
+    *   `E2BSandboxConfig` 选择 `template` 或 `image` 并设置固定生命周期 `sandbox_timeout`；连接和并发参数放在 `E2BSandboxManagerConfig`。详见 [E2B 远程沙箱](../deployment/e2b.md)。
+
+Docker 的 `memory_limit`、`cpu_limit` 可以设为 `None` 取消限制，`cap_add` 用于添加 Linux capabilities。E2B 构建资源使用独立的 `cpu_count`、`memory_mb` 字段。
 
 ## 2. 工具系统 (Tool System)
 

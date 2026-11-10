@@ -19,24 +19,16 @@ logger = get_logger()
 
 @register_tool('notebook_executor')
 class NotebookExecutor(SandboxTool):
-
     _name = 'notebook_executor'
     _sandbox_types = [SandboxType.DOCKER_NOTEBOOK]
     _description = 'Execute Python code in a Jupyter kernel environment'
     _parameters = ToolParams(
         type='object',
         properties={
-            'code': {
-                'type': 'string',
-                'description': 'Python code to execute in the notebook kernel'
-            },
-            'timeout': {
-                'type': 'integer',
-                'description': 'Execution timeout in seconds',
-                'default': 30
-            }
+            'code': {'type': 'string', 'description': 'Python code to execute in the notebook kernel'},
+            'timeout': {'type': 'integer', 'description': 'Execution timeout in seconds', 'default': 30},
         },
-        required=['code']
+        required=['code'],
     )
 
     async def execute(self, sandbox_context: 'Sandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
@@ -57,10 +49,7 @@ class NotebookExecutor(SandboxTool):
                 status = ExecutionStatus.ERROR
 
             return ToolResult(
-                tool_name=self.name,
-                status=status,
-                output=result.stdout,
-                error=result.stderr if result.stderr else None
+                tool_name=self.name, status=status, output=result.stdout, error=result.stderr if result.stderr else None
             )
 
         except Exception as e:
@@ -139,12 +128,13 @@ class NotebookExecutor(SandboxTool):
             output_text += f'\n{error_msg}'
 
         return CommandResult(
-            status=ExecutionStatus.TIMEOUT if timed_out else
-            (ExecutionStatus.SUCCESS if not error_occurred else ExecutionStatus.ERROR),
+            status=ExecutionStatus.TIMEOUT
+            if timed_out
+            else (ExecutionStatus.SUCCESS if not error_occurred else ExecutionStatus.ERROR),
             command=code,
             exit_code=1 if error_occurred else 0,
             stdout=output_text if not error_occurred else '',
-            stderr=output_text if error_occurred else ''
+            stderr=output_text if error_occurred else '',
         )
 
     async def _interrupt_kernel(self, sandbox_context: 'Sandbox') -> None:
@@ -153,11 +143,13 @@ class NotebookExecutor(SandboxTool):
 
         def _post_interrupt():
             import requests
+
             url = f'{sandbox_context.base_url}/api/kernels/{sandbox_context.kernel_id}/interrupt'
             return requests.post(url, timeout=5)
 
         try:
             import asyncio
+
             response = await asyncio.to_thread(_post_interrupt)
             if response.status_code not in (200, 204):
                 logger.warning(f'Kernel interrupt returned HTTP {response.status_code}: {response.text}')

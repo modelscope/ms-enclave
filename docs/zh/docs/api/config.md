@@ -8,6 +8,8 @@
 
 ::: ms_enclave.sandbox.model.config.VolcengineSandboxManagerConfig
 
+::: ms_enclave.sandbox.model.config.E2BSandboxManagerConfig
+
 ## 沙箱配置
 
 ::: ms_enclave.sandbox.model.config.SandboxConfig
@@ -17,6 +19,8 @@
 ::: ms_enclave.sandbox.model.config.DockerNotebookConfig
 
 ::: ms_enclave.sandbox.model.config.VolcengineSandboxConfig
+
+::: ms_enclave.sandbox.model.config.E2BSandboxConfig
 
 ## 工具配置
 

@@ -54,15 +54,14 @@ class ToolInfo(BaseModel):
     parameters: ToolParams = Field(default_factory=ToolParams, description='JSON Schema of tool parameters object.')
     options: Optional[Dict[str, object]] = Field(
         default=None,
-        description=
-        'Optional property bag that can be used by the model provider to customize the implementation of the tool'
+        description='Optional property bag that can be used by the model provider to customize the implementation of the tool',
     )
 
 
 def parse_tool_info(func: Callable[..., Any]) -> ToolInfo:
     # tool may already have registry attributes w/ tool info
 
-    if (getattr(func, 'name', None) and getattr(func, 'description', None) and getattr(func, 'parameters', None)):
+    if getattr(func, 'name', None) and getattr(func, 'description', None) and getattr(func, 'parameters', None):
         return ToolInfo(
             name=func.name,
             description=func.description,

@@ -9,32 +9,24 @@ from ms_enclave.sandbox.tools.sandbox_tool import SandboxTool
 from ms_enclave.sandbox.tools.tool_info import ToolParams
 
 if TYPE_CHECKING:
-    from ms_enclave.sandbox.boxes import DockerSandbox, VolcengineSandbox
+    from ms_enclave.sandbox.boxes import Sandbox, VolcengineSandbox
 
 
 @register_tool('python_executor')
 class PythonExecutor(SandboxTool):
-
     _name = 'python_executor'
-    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE]
+    _sandbox_types = [SandboxType.DOCKER, SandboxType.VOLCENGINE, SandboxType.E2B]
     _description = 'Execute Python code in an isolated environment using IPython'
     _parameters = ToolParams(
         type='object',
         properties={
-            'code': {
-                'type': 'string',
-                'description': 'Python code to execute'
-            },
-            'timeout': {
-                'type': 'integer',
-                'description': 'Execution timeout in seconds',
-                'default': 30
-            }
+            'code': {'type': 'string', 'description': 'Python code to execute'},
+            'timeout': {'type': 'integer', 'description': 'Execution timeout in seconds', 'default': 30},
         },
-        required=['code']
+        required=['code'],
     )
 
-    async def execute(self, sandbox_context: 'DockerSandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
+    async def execute(self, sandbox_context: 'Sandbox', code: str, timeout: Optional[int] = 30) -> ToolResult:
         """Execute Python code by writing to a temporary file and executing it."""
 
         if not code.strip():
@@ -56,9 +48,11 @@ class PythonExecutor(SandboxTool):
         script_path = f'/tmp/{script_basename}'
 
         try:
-
             # Write script to container to avoid long code errors
-            await sandbox_context.put_file(script_path, code)
+            if not await sandbox_context.put_file(script_path, code):
+                return ToolResult(
+                    tool_name=self.name, status=ExecutionStatus.ERROR, output='', error='Failed to upload Python script'
+                )
 
             # Execute using python
             command = f'python {script_path}'
@@ -72,10 +66,7 @@ class PythonExecutor(SandboxTool):
                 status = ExecutionStatus.ERROR
 
             return ToolResult(
-                tool_name=self.name,
-                status=status,
-                output=result.stdout,
-                error=result.stderr if result.stderr else None
+                tool_name=self.name, status=status, output=result.stdout, error=result.stderr if result.stderr else None
             )
         except Exception as e:
             return ToolResult(

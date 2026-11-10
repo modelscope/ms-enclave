@@ -1,8 +1,12 @@
 """Configuration data models."""
 
+import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+
+from ms_enclave.sandbox.model.constants import DEFAULT_E2B_MAX_CONCURRENT_BUILDS
+from ms_enclave.sandbox.utils.e2b_helpers import BuildMode, E2BEndpoint, E2BProvider
 
 
 class SandboxManagerConfig(BaseModel):
@@ -13,8 +17,9 @@ class SandboxManagerConfig(BaseModel):
     api_key: Optional[str] = Field(None, description='API key for authentication')
     cleanup_interval: Optional[int] = Field(default=None, description='Cleanup interval in seconds')
     pool_size: int = Field(default=0, description='Sandbox pool size (0 = disabled)')
-    sandbox_config: Optional[Union['SandboxConfig',
-                                   Dict[str, Any]]] = Field(None, description='Default sandbox configuration for pool')
+    sandbox_config: Optional[Union['SandboxConfig', Dict[str, Any]]] = Field(
+        None, description='Default sandbox configuration for pool'
+    )
 
     @field_validator('pool_size')
     def validate_pool_size(cls, v):
@@ -37,8 +42,9 @@ class SandboxConfig(BaseModel):
     """Base sandbox configuration."""
 
     timeout: int = Field(default=30, description='Default timeout in seconds')
-    tools_config: Union[List[str], Dict[str, Dict[
-        str, Any]]] = Field(default_factory=dict, description='Configuration for tools within the sandbox')
+    tools_config: Union[List[str], Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict, description='Configuration for tools within the sandbox'
+    )
     working_dir: str = Field(default='/sandbox', description='Default working directory')
     env_vars: Dict[str, str] = Field(default_factory=dict, description='Environment variables')
     resource_limits: Dict[str, Any] = Field(default_factory=dict, description='Resource limits')
@@ -58,6 +64,7 @@ class DockerSandboxConfig(SandboxConfig):
     """Docker-specific sandbox configuration."""
 
     image: str = Field('python:3.11-slim', description='Docker image name')
+    cap_add: List[str] = Field(default_factory=list, description='Additional Linux capabilities')
     entrypoint: Optional[Union[str, List[str]]] = Field(
         None,
         description='Container entrypoint override. Use an empty list to clear the image entrypoint.',
@@ -65,14 +72,14 @@ class DockerSandboxConfig(SandboxConfig):
     command: Optional[Union[str, List[str]]] = Field(None, description='Container command')
     volumes: Dict[str, Dict[str, str]] = Field(
         default_factory=dict,
-        description="Volume mounts. Format: { host_path: {'bind': container_path, 'mode': 'rw|ro'} }"
+        description="Volume mounts. Format: { host_path: {'bind': container_path, 'mode': 'rw|ro'} }",
     )
     ports: Dict[str, Union[int, str, Tuple[str, int]]] = Field(default_factory=dict, description='Port mappings')
     network: Optional[str] = Field('bridge', description='Network name')
     extra_hosts: Dict[str, str] = Field(
         default_factory=dict,
         description=(
-            'Additional ``hostname -> ip`` entries written to the container\'s /etc/hosts. '
+            "Additional ``hostname -> ip`` entries written to the container's /etc/hosts. "
             'Use the special value ``host-gateway`` to resolve a hostname to the Docker host '
             '(e.g. ``{"host.docker.internal": "host-gateway"}`` so processes inside the '
             'container can reach a service on the host on Linux, where the alias is not '
@@ -82,20 +89,20 @@ class DockerSandboxConfig(SandboxConfig):
     platform: Optional[str] = Field(
         default=None,
         description='Docker platform (e.g. "linux/amd64"). Required when the image arch differs from the host '
-        '(e.g. amd64 image on Apple Silicon).'
+        '(e.g. amd64 image on Apple Silicon).',
     )
-    memory_limit: str = Field(default='4g', description='Memory limit')
-    cpu_limit: float = Field(default=2.0, description='CPU limit')
+    memory_limit: Optional[str] = Field(default='4g', description='Memory limit; None means unrestricted')
+    cpu_limit: Optional[float] = Field(default=2.0, description='CPU limit; None means unrestricted')
     network_enabled: bool = Field(default=True, description='Enable network access')
     privileged: bool = Field(default=False, description='Run in privileged mode')
     remove_on_exit: bool = Field(default=True, description='Remove container on exit')
     pull_progress: bool = Field(
         default=False,
-        description='If True, stream image pull progress to the logger (aggregated every pull_progress_interval seconds).'
+        description='If True, stream image pull progress to the logger (aggregated every pull_progress_interval seconds).',
     )
     pull_progress_interval: float = Field(
         default=3.0,
-        description='Seconds between aggregated pull-progress log lines (only used when pull_progress=True).'
+        description='Seconds between aggregated pull-progress log lines (only used when pull_progress=True).',
     )
     docker_executor_workers: int = Field(
         default=8, description='Max worker threads in the dedicated thread pool used for blocking docker SDK calls.'
@@ -104,10 +111,13 @@ class DockerSandboxConfig(SandboxConfig):
     @field_validator('memory_limit')
     def validate_memory_limit(cls, v):
         """Validate memory limit format."""
+        if v is None:
+            return v
         if not isinstance(v, str):
             raise ValueError('Memory limit must be a string')
         # Basic validation for memory format (e.g., '512m', '1g', '2G')
         import re
+
         if not re.match(r'^\d+[kmgKMG]?$', v):
             raise ValueError('Invalid memory limit format')
         return v
@@ -115,9 +125,81 @@ class DockerSandboxConfig(SandboxConfig):
     @field_validator('cpu_limit')
     def validate_cpu_limit(cls, v):
         """Validate CPU limit."""
-        if v <= 0:
+        if v is not None and v <= 0:
             raise ValueError('CPU limit must be positive')
         return v
+
+
+class E2BSandboxManagerConfig(SandboxManagerConfig):
+    """Connection and concurrency settings for an E2B-compatible service."""
+
+    model_config = ConfigDict(extra='forbid', hide_input_in_errors=True)
+
+    api_key: Optional[SecretStr] = None
+    api_url: Optional[str] = None
+    domain: Optional[str] = None
+    max_sandboxes: int = Field(default=16, gt=0, description='Maximum live sandboxes and pending capacity reservations')
+    max_concurrent_builds: int = Field(default=DEFAULT_E2B_MAX_CONCURRENT_BUILDS, gt=0)
+    build_mode: Optional[BuildMode] = None
+    image_region: Optional[str] = None
+    image_mapping: Dict[str, str] = Field(default_factory=dict, repr=False)
+    run_id: Optional[str] = None
+
+    @model_validator(mode='after')
+    def _validate_connection(self) -> 'E2BSandboxManagerConfig':
+        # Resolve SDK endpoint defaults here too, so provider/build selection agrees.
+        self.domain = self.domain or os.environ.get('E2B_DOMAIN')
+        self.api_url = self.api_url or os.environ.get('E2B_API_URL')
+        if self.api_key is None or not self.api_key.get_secret_value():
+            self.api_key = SecretStr(os.environ.get('E2B_API_KEY', ''))
+        if not self.api_key.get_secret_value():
+            raise ValueError(
+                'E2B api_key is missing: set E2BSandboxManagerConfig.api_key or the E2B_API_KEY environment variable.'
+            )
+        if self.provider != 'aliyun' and self.build_mode == 'micro':
+            raise ValueError("build_mode='micro' is only supported by Aliyun Agent Sandbox.")
+        return self
+
+    @property
+    def _endpoint(self) -> E2BEndpoint:
+        return E2BEndpoint(self.domain, self.api_url)
+
+    @property
+    def provider(self) -> E2BProvider:
+        """Return the provider inferred from the endpoint."""
+        return self._endpoint.provider
+
+    @property
+    def target_region(self) -> Optional[str]:
+        """Return an explicit or endpoint-derived image region."""
+        return self.image_region or self._endpoint.region
+
+    @property
+    def resolved_build_mode(self) -> BuildMode:
+        """Return the provider's default build mode unless overridden."""
+        return self.build_mode or self._endpoint.default_build_mode
+
+
+class E2BSandboxConfig(SandboxConfig):
+    """Image or template and fixed lifetime for one remote sandbox."""
+
+    model_config = ConfigDict(extra='forbid', hide_input_in_errors=True)
+
+    image: Optional[str] = None
+    template: Optional[str] = None
+    user: str = 'user'
+    working_dir: str = '/home/user'
+    sandbox_timeout: int = Field(default=3600, gt=0)
+    cpu_count: int = Field(default=2, gt=0)
+    memory_mb: int = Field(default=4096, gt=0)
+    disk_size_mb: int = Field(default=15360, gt=0)
+    allow_internet_access: bool = True
+
+    @model_validator(mode='after')
+    def _validate_source(self) -> 'E2BSandboxConfig':
+        if not self.image and not self.template:
+            raise ValueError('E2B sandbox config requires either `template` or `image`.')
+        return self
 
 
 class DockerNotebookConfig(DockerSandboxConfig):
@@ -173,9 +255,9 @@ class VolcengineSandboxConfig(SandboxConfig):
     )
 
     # ---- Sandbox-local options ----
-    tool_language_map: Dict[
-        str,
-        str] = Field(default_factory=dict, description='Per-tool language override, e.g. {"shell_executor": "bash"}.')
+    tool_language_map: Dict[str, str] = Field(
+        default_factory=dict, description='Per-tool language override, e.g. {"shell_executor": "bash"}.'
+    )
 
     @field_validator('base_url')
     @classmethod
@@ -202,9 +284,9 @@ class VolcengineSandboxManagerConfig(SandboxManagerConfig):
     run_code_path: str = Field(default='/run_code', description='Path of the run_code endpoint')
     extra_headers: Optional[Dict[str, str]] = Field(None, description='Extra HTTP headers to attach to every request')
     max_concurrency: int = Field(default=16, description='Maximum concurrent requests shared by this manager')
-    dataset_language_map: Optional[
-        Dict[str, str]
-    ] = Field(None, description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).')
+    dataset_language_map: Optional[Dict[str, str]] = Field(
+        None, description='Optional language rename map applied before calling /run_code (e.g. {"r": "R"}).'
+    )
 
     @field_validator('base_url')
     def validate_base_url(cls, v):

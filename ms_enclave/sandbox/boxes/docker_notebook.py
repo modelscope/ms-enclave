@@ -58,6 +58,7 @@ class DockerNotebookSandbox(DockerSandbox):
 
             # Initialize Docker client first
             import docker
+
             self.client = docker.from_env()
 
             # Build Jupyter image if needed before creating container
@@ -161,9 +162,9 @@ class DockerNotebookSandbox(DockerSandbox):
                 # Process and log build output
                 for log in build_logs[1]:  # build_logs[1] contains the build log generator
                     if 'stream' in log:
-                        logger.info(f"[📦 {self.id}] {log['stream'].strip()}")
+                        logger.info(f'[📦 {self.id}] {log["stream"].strip()}')
                     elif 'error' in log:
-                        logger.error(f"[📦 {self.id}] {log['error']}")
+                        logger.error(f'[📦 {self.id}] {log["error"]}')
                 return build_logs[0]  # Return the built image
 
             await self._run_blocking(build_image)
@@ -191,34 +192,50 @@ class DockerNotebookSandbox(DockerSandbox):
         # Establish websocket connection
         try:
             from websocket import create_connection
+
             ws_url = f'ws://{self.host}:{self.port}/api/kernels/{self.kernel_id}/channels'
             self.ws = create_connection(ws_url)
             logger.info(f'Kernel {self.kernel_id} created and connected')
         except ImportError:
             raise RuntimeError('websocket-client package is required. Install with: pip install websocket-client')
 
+    def _clear_jupyter_session(self) -> None:
+        """Drop local references to the current Jupyter session."""
+        if self.ws:
+            try:
+                self.ws.close()
+            except Exception:
+                pass
+        self.ws = None
+        self.kernel_id = None
+        self.base_url = None
+
+    async def _reset_after_interrupted_exec(self) -> None:
+        """Restart the container and recreate the Jupyter session."""
+        self.update_status(SandboxStatus.INITIALIZING)
+        self._clear_jupyter_session()
+        try:
+            await self._restart_container()
+            await self._setup_jupyter()
+        except BaseException as exc:
+            self.update_status(SandboxStatus.ERROR)
+            self.metadata['error'] = str(exc)
+            logger.error(f'Failed to reset notebook sandbox after interrupted exec: {exc}')
+            raise
+        self.update_status(SandboxStatus.RUNNING)
+
     async def cleanup(self) -> None:
         """Clean up Jupyter resources and Docker container."""
-        try:
-            # Close websocket connection
-            if self.ws:
-                try:
-                    self.ws.close()
-                except Exception:
-                    pass
-                self.ws = None
+        kernel_id = self.kernel_id
+        base_url = self.base_url
+        self._clear_jupyter_session()
 
-            # Delete kernel
-            if self.kernel_id and self.base_url:
-                try:
-                    import requests
-                    requests.delete(f'{self.base_url}/api/kernels/{self.kernel_id}')
-                except Exception:
-                    pass
-                self.kernel_id = None
+        if kernel_id and base_url:
+            try:
+                import requests
 
-        except Exception as e:
-            logger.error(f'Error during Jupyter cleanup: {e}')
+                requests.delete(f'{base_url}/api/kernels/{kernel_id}')
+            except Exception:
+                pass
 
-        # Call parent cleanup
         await super().cleanup()

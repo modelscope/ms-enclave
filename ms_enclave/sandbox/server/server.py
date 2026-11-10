@@ -23,8 +23,7 @@ from ..model import (
 
 
 class SandboxServer:
-    """FastAPI-based sandbox server.
-    """
+    """FastAPI-based sandbox server."""
 
     def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         """Initialize sandbox server.
@@ -39,7 +38,7 @@ class SandboxServer:
             title='Sandbox API',
             description='Agent sandbox execution environment',
             version='1.0.0',
-            lifespan=self.lifespan
+            lifespan=self.lifespan,
         )
         self._setup_middleware()
         self._setup_auth_middleware()
@@ -98,7 +97,7 @@ class SandboxServer:
                 version='1.0.0',
                 uptime=time.time() - self.start_time,
                 active_sandboxes=stats['total_sandboxes'],
-                system_info=stats
+                system_info=stats,
             )
 
         # Sandbox management
@@ -198,7 +197,7 @@ class SandboxServer:
                 return {
                     'message': 'Pool initialized successfully',
                     'pool_size': len(sandbox_ids),
-                    'sandbox_ids': sandbox_ids
+                    'sandbox_ids': sandbox_ids,
                 }
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
@@ -225,6 +224,7 @@ class SandboxServer:
             **kwargs: Additional uvicorn arguments
         """
         import uvicorn
+
         uvicorn.run(self.app, host=host, port=port, **kwargs)
 
 

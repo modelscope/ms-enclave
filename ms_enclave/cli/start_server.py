@@ -10,8 +10,7 @@ logger = get_logger()
 
 
 def subparser_func(args):
-    """ Function which will be called for a specific sub parser.
-    """
+    """Function which will be called for a specific sub parser."""
     return ServerCMD(args)
 
 
@@ -23,8 +22,7 @@ class ServerCMD(CLICommand):
 
     @staticmethod
     def define_args(parsers: ArgumentParser):
-        """Define args for the server command.
-        """
+        """Define args for the server command."""
         parser = parsers.add_parser(ServerCMD.name, help='Start the MS-Enclave sandbox HTTP server')
         add_argument(parser)
         parser.set_defaults(func=subparser_func)
@@ -67,18 +65,18 @@ def add_argument(parser: ArgumentParser) -> None:
         type=str,
         choices=['critical', 'error', 'warning', 'info', 'debug'],
         default='info',
-        help='Log level for the server (default: info)'
+        help='Log level for the server (default: info)',
     )
     parser.add_argument(
         '--cleanup-interval',
         type=int,
         default=300,
         metavar='SECONDS',
-        help='Background cleanup interval in seconds (default: 300)'
+        help='Background cleanup interval in seconds (default: 300)',
     )
     parser.add_argument(
         '--api-key',
         type=str,
         default=None,
-        help='Optional API key to protect endpoints. If omitted, no authentication is enforced.'
+        help='Optional API key to protect endpoints. If omitted, no authentication is enforced.',
     )

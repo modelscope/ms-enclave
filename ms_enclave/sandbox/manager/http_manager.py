@@ -26,8 +26,7 @@ logger = get_logger()
 
 @register_manager(SandboxManagerType.HTTP)
 class HttpSandboxManager(SandboxManager):
-    """HTTP-based sandbox manager for remote services.
-    """
+    """HTTP-based sandbox manager for remote services."""
 
     def __init__(self, config: Optional[SandboxManagerConfig] = None, **kwargs):
         """Initialize HTTP sandbox manager.
@@ -43,7 +42,7 @@ class HttpSandboxManager(SandboxManager):
 
         self.timeout = aiohttp.ClientTimeout(total=self.config.timeout or kwargs.get('timeout'))
         self.api_key = self.config.api_key or kwargs.get('api_key')
-        self._default_headers: Optional[Dict[str, str]] = ({'X-API-Key': self.api_key} if self.api_key else None)
+        self._default_headers: Optional[Dict[str, str]] = {'X-API-Key': self.api_key} if self.api_key else None
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def start(self) -> None:
@@ -79,7 +78,7 @@ class HttpSandboxManager(SandboxManager):
         self,
         sandbox_type: SandboxType,
         config: Optional[Union[SandboxConfig, Dict]] = None,
-        sandbox_id: Optional[str] = None
+        sandbox_id: Optional[str] = None,
     ) -> str:
         """Create a new sandbox via HTTP API.
 
@@ -122,7 +121,7 @@ class HttpSandboxManager(SandboxManager):
                     return sandbox_id
                 else:
                     error_data = await response.json()
-                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+                    raise RuntimeError(f'HTTP {response.status}: {error_data.get("detail", "Unknown error")}')
 
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error creating sandbox: {e}')
@@ -287,7 +286,7 @@ class HttpSandboxManager(SandboxManager):
                     raise RuntimeError(error_data.get('detail', 'Internal server error'))
                 else:
                     error_data = await response.json()
-                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+                    raise RuntimeError(f'HTTP {response.status}: {error_data.get("detail", "Unknown error")}')
 
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error executing tool: {e}')
@@ -319,7 +318,7 @@ class HttpSandboxManager(SandboxManager):
                     raise ValueError(error_data.get('detail', f'Sandbox {sandbox_id} not found'))
                 else:
                     error_data = await response.json()
-                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+                    raise RuntimeError(f'HTTP {response.status}: {error_data.get("detail", "Unknown error")}')
 
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error getting sandbox tools: {e}')
@@ -405,6 +404,7 @@ class HttpSandboxManager(SandboxManager):
 
             # Add local tracking stats
             from collections import Counter
+
             status_counter = Counter()
             type_counter = Counter()
 
@@ -434,7 +434,7 @@ class HttpSandboxManager(SandboxManager):
                 'base_url': self.base_url,
                 'tracked_sandboxes': len(self._sandboxes),
                 'running': self._running,
-                'error': str(e)
+                'error': str(e),
             }
 
     async def health_check(self) -> Dict[str, Any]:
@@ -464,7 +464,7 @@ class HttpSandboxManager(SandboxManager):
         self,
         pool_size: Optional[int] = None,
         sandbox_type: Optional[SandboxType] = None,
-        config: Optional[Union[SandboxConfig, Dict]] = None
+        config: Optional[Union[SandboxConfig, Dict]] = None,
     ) -> List[str]:
         """Initialize sandbox pool via HTTP API.
 
@@ -524,7 +524,7 @@ class HttpSandboxManager(SandboxManager):
                     return sandbox_ids
                 else:
                     error_data = await response.json()
-                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+                    raise RuntimeError(f'HTTP {response.status}: {error_data.get("detail", "Unknown error")}')
 
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error initializing pool: {e}')
@@ -579,7 +579,7 @@ class HttpSandboxManager(SandboxManager):
                     raise TimeoutError(error_data.get('detail', 'Timeout waiting for available sandbox'))
                 else:
                     error_data = await response.json()
-                    raise RuntimeError(f"HTTP {response.status}: {error_data.get('detail', 'Unknown error')}")
+                    raise RuntimeError(f'HTTP {response.status}: {error_data.get("detail", "Unknown error")}')
 
         except aiohttp.ClientError as e:
             logger.error(f'HTTP client error executing tool in pool: {e}')

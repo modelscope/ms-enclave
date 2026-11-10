@@ -51,7 +51,7 @@ class SandboxManager(ABC):
         self,
         sandbox_type: SandboxType,
         config: Optional[Union[SandboxConfig, Dict]] = None,
-        sandbox_id: Optional[str] = None
+        sandbox_id: Optional[str] = None,
     ) -> str:
         """Create a new sandbox.
 
@@ -180,7 +180,7 @@ class SandboxManager(ABC):
         self,
         pool_size: Optional[int] = None,
         sandbox_type: Optional[SandboxType] = None,
-        config: Optional[Union[SandboxConfig, Dict]] = None
+        config: Optional[Union[SandboxConfig, Dict]] = None,
     ) -> List[str]:
         """Initialize sandbox pool.
 
@@ -248,7 +248,7 @@ class SandboxManagerFactory:
         cls,
         manager_type: Optional[SandboxManagerType] = None,
         config: Optional[SandboxManagerConfig] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> SandboxManager:
         """Create a sandbox manager instance.
 
@@ -272,8 +272,7 @@ class SandboxManagerFactory:
 
         if manager_type not in cls._registry:
             raise ValueError(
-                f"Sandbox manager type '{manager_type}' not registered. "
-                f'Available types: {list(cls._registry.keys())}'
+                f"Sandbox manager type '{manager_type}' not registered. Available types: {list(cls._registry.keys())}"
             )
 
         manager_class = cls._registry[manager_type]

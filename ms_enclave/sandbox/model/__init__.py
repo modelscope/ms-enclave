@@ -4,6 +4,8 @@ from .base import ExecutionStatus, SandboxManagerType, SandboxStatus, SandboxTyp
 from .config import (
     DockerNotebookConfig,
     DockerSandboxConfig,
+    E2BSandboxConfig,
+    E2BSandboxManagerConfig,
     FileOperationConfig,
     PythonExecutorConfig,
     SandboxConfig,

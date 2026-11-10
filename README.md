@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%E2%89%A53.10-5be.svg">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.11-5be.svg">
 <a href="https://badge.fury.io/py/ms-enclave"><img src="https://badge.fury.io/py/ms-enclave.svg" alt="PyPI version" height="18"></a>
 <a href="https://pypi.org/project/ms-enclave"><img alt="PyPI - Downloads" src="https://static.pepy.tech/badge/ms-enclave"></a>
 <a href="https://github.com/modelscope/ms-enclave/pulls"><img src="https://img.shields.io/badge/PR-welcome-55EB99.svg"></a>
@@ -34,9 +34,10 @@ ms-enclave is a modular and stable sandbox runtime environment that provides a s
 
 ## System Requirements
 
-- Python >= 3.10
-- Operating System: Linux, macOS, or Windows with Docker support
-- Docker daemon available on local machine (Notebook sandbox requires port 8888 open)
+- Python >= 3.11
+- Operating System: Linux, macOS, or Windows
+- For Docker backends: a local Docker daemon (Notebook sandbox requires port 8888 open)
+- For the [E2B remote backend](docs/en/docs/deployment/e2b.md): an E2B-compatible service and API key; local Docker is optional
 
 ## Installation
 
@@ -46,6 +47,8 @@ ms-enclave is a modular and stable sandbox runtime environment that provides a s
 pip install ms-enclave
 # If Docker support is needed, install extra dependencies
 pip install 'ms-enclave[docker]'
+# For E2B-compatible remote sandboxes
+pip install 'ms-enclave[e2b]'
 ```
 
 ### Install from Source
@@ -388,8 +391,9 @@ DockerNotebookConfig(tools_config={'notebook_executor': {}})
 ## Common Configuration Options
 
 - `image`: Docker image name (e.g., `python:3.11-slim` or `jupyter-kernel-gateway`)
-- `memory_limit`: Memory limit (e.g., `512m`/`1g`)
-- `cpu_limit`: CPU limit (float, >0)
+- `memory_limit`: Memory limit (e.g., `512m`/`1g`); `None` disables the limit
+- `cpu_limit`: CPU limit (float, >0); `None` disables the limit
+- `cap_add`: Additional Linux capabilities, e.g. `['SYS_ADMIN']`; defaults to `[]`
 - `volumes`: Volume mounts, formatted as `{host_path: {"bind": "/container/path", "mode": "rw"}}`
 - `ports`: Port mapping, formatted as `{ "8888/tcp": ("127.0.0.1", 8888) }`
 - `network_enabled`: Whether to enable network (Notebook sandbox requires True)
@@ -459,7 +463,7 @@ git clone https://github.com/modelscope/ms-enclave.git
 cd ms-enclave
 
 # Create virtual environment
-conda create -n ms-enclave python=3.10 -y
+conda create -n ms-enclave python=3.11 -y
 conda activate ms-enclave
 
 # Install dependencies
